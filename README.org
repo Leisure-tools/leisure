@@ -1,0 +1,31 @@
+#+TITLE: Leisure main program
+
+This is an evolving view of the entire Leisure project
+
+* Working Features
+- decentralized operational transform
+- DAG-based document history
+- document model
+- lazy finger tree
+
+* Nascent features (in the works)
+- local server for editors, languages, browsers, etc.
+
+* Planned features
+- org-mode document model
+  - data support: JSON, YAML, TOML
+- JavaScript support
+- Julia support
+- Reactive HTML rendering
+- shared and local metadata
+  - org doc containing information about the document
+- peer-to-peer support with security info in metadata
+  - encryption with rotating keys
+  - owners, editors, commenters, viewers
+  - region permissions (using markers)
+- region comments
+  - metadata blocks have info
+  - contents is an org doc
+  - markers delimit region
+  - can be used for git issues and other scraped information
+- SQL persistence
