@@ -1,0 +1,80 @@
+* Default Leisure template
+
+#+begin_src js
+import {renderText} from './orgRenderer.js'
+
+Handlebars.registerHelper('renderText', renderText)
+#+end_src
+
+#+begin_src css
+.leisure-name {
+    font-weight: bold;
+}
+
+.leisure-source,
+.leisure-block,
+.leisure-html,
+.leisure-results,
+.leisure-html,
+.leisure-drawer,
+.leisure-keyword,
+.leisure-table
+ {
+    border: solid black 1px;
+    border-radius: 5px;
+}
+#+end_src
+
+#+name: headline
+#+begin_src html
+<span class='{{hlClass}}'>{{renderText contentStr}}</span>
+#+end_src
+
+name: text
+#+begin_src html
+<span>{{renderText this}}</span>
+#+end_src
+
+#+name: source
+#+begin_src html
+Source{{#if name}}<span class='leisure-name'>[{{name}}]</span>: {{language}}{{/if}}
+<div class='leisure-source'>{{contentStr}}</div>
+#+end_src
+
+#+name: block
+#+begin_src html
+<div class='leisure-block'>{{text}}</div>
+#+end_src
+
+#+name: results
+#+begin_src html
+<div class='leisure-results'>{{content}}</div>
+#+end_src
+
+#+name: html
+#+begin_src html
+<div class='leisure-html'>{{text}}</div>
+#+end_src
+
+#+name: drawer
+#+begin_src html
+<div class='leisure-drawer'>{{text}}</div>
+#+end_src
+
+#+name: keyword
+#+begin_src html
+<div class='leisure-keyword'>{{text}}</div>
+#+end_src
+
+name: table
+#+begin_src html
+<table class='leisure-table'>
+  {{#each values}}
+  <tr>
+    {{#each this}}
+    <td>{{this}}</td>
+    {{/each}}
+  </tr>
+  {{/each}}
+</table>
+#+end_src

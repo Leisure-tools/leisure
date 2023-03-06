@@ -1,0 +1,15 @@
+{
+  "compilerOptions": {
+    "target": "esnext",
+    "lib": [
+      "esnext",
+      "dom"
+    ],
+    "sourceMap": true
+  },
+  "files": [
+    "main.ts",
+    "leisure.ts",
+    "orgRenderer.ts"
+  ]
+}

@@ -10,15 +10,20 @@ This is an evolving view of the entire Leisure project
 
 * Nascent features (in the works)
 - local server for editors, languages, browsers, etc.
+  - emacs
+  - vs code
 
 * Planned features
 - org-mode document model
-  - data support: JSON, YAML, TOML
-- JavaScript support
 - Julia support
+- JavaScript support
+- file observer/writer
 - Reactive HTML rendering
 - shared and local metadata
-  - org doc containing information about the document
+  - local metadata
+    - arbitrary TOML data
+    - editors can use it for document preferences (suppress notification, etc.)
+  - TOML doc containing information about the document
 - peer-to-peer support with security info in metadata
   - encryption with rotating keys
   - owners, editors, commenters, viewers
@@ -29,3 +34,11 @@ This is an evolving view of the entire Leisure project
   - markers delimit region
   - can be used for git issues and other scraped information
 - SQL persistence
+
+* Use cases
+** Remote execution with multiple servers
+** Collaborative editing
+** Games
+** Education
+** Easily create GUIs
+** Interactive computing

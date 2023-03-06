@@ -3,10 +3,17 @@ module github.com/leisure-tools/leisure
 go 1.19
 
 require (
-	github.com/leisure-tools/document v0.0.9
-	github.com/leisure-tools/history v0.0.0
+	github.com/aki237/nscjar v0.0.0-20210417074043-bbb606196143
 	github.com/leisure-tools/server v0.0.0
-	github.com/sergi/go-diff v1.3.1
 )
 
-require github.com/leisure-tools/lazyfingertree v0.0.10 // indirect
+require (
+	github.com/BurntSushi/toml v1.2.1 // indirect
+	github.com/leisure-tools/document v0.0.11 // indirect
+	github.com/leisure-tools/history v0.0.1 // indirect
+	github.com/leisure-tools/lazyfingertree v0.0.11 // indirect
+	github.com/leisure-tools/org v0.0.0 // indirect
+	github.com/nu7hatch/gouuid v0.0.0-20131221200532-179d4d0c4d8d // indirect
+	github.com/sergi/go-diff v1.3.1 // indirect
+	gopkg.in/yaml.v3 v3.0.1 // indirect
+)
