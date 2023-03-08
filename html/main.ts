@@ -55,12 +55,17 @@ async function ready() {
     document.body.textContent = `No "doc" parameter`
     return
   }
+  const useOrg = (docUrl.searchParams.get("org") ?? "").toLowerCase() == "true"
   const leisure = new Leisure(docUrl.href, "browser", docUrl.searchParams.get("doc"))
-  //await leisure.connect(replacements)
-  //leisure.updateLoop(updates, replace, displayError)
-  const renderer = new OrgRenderer(await parseOrg(docUrl.searchParams.get("templates") || DEFAULT_TEMPLATES))
-  await leisure.connect((repl)=> renderer.connect(repl))
-  leisure.updateLoop(updates, (repl)=>renderer.update(repl), displayError)
+  if (useOrg) {
+    const renderer = new OrgRenderer(await parseOrg(docUrl.searchParams.get("templates") || DEFAULT_TEMPLATES))
+    await leisure.connect(true, (repl)=> renderer.connect(repl))
+    leisure.updateLoop(updates, (repl)=>renderer.update(repl), displayError)
+  } else {
+    document.body.style.whiteSpace = "pre"
+    await leisure.connect(false, (result: any)=> replacements([{offset: 0, length: 0, text: result.document}]))
+    leisure.updateLoop(updates, replace, displayError)
+  }
 }
 
 if (document.readyState === "complete") {

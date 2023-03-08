@@ -72,10 +72,10 @@ export class Leisure {
       this.checkError(await filter(response)))
   }
   
-  async connect(handle: ConnectHandler) {
+  async connect(org: boolean, handle: ConnectHandler) {
     const url = new URL(SESSION_CONNECT + this.sessionName, this.server)
     url.searchParams.set('doc', this.documentId)
-    url.searchParams.set('org', 'true')
+    url.searchParams.set('org', JSON.stringify(!!org))
     let doc = await this.fetchJson('connecting', url.href)
     console.log('GOT', doc)
     if (typeof doc == 'string') {

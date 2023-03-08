@@ -4,7 +4,7 @@ go 1.20
 
 require (
 	github.com/aki237/nscjar v0.0.0-20210417074043-bbb606196143
-	github.com/leisure-tools/server v0.0.4
+	github.com/leisure-tools/server v0.0.5
 )
 
 require (
