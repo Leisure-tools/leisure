@@ -1,4 +1,4 @@
-const VERSION = "/v1";
+export const VERSION = "/v1";
 const DOC_CREATE = VERSION + "/doc/create/";
 const DOC_GET = VERSION + "/doc/get/";
 const DOC_LIST = VERSION + "/doc/list";
@@ -23,8 +23,8 @@ export interface Edit {
 }
 
 type UpdateGenerator = ()=>Edit
-type UpdateHandler = (edit: Edit)=>Promise<void>;
-type ConnectHandler = (edit: Replacement[])=>Promise<void>;
+type UpdateHandler = (edit: Edit)=>any;
+type ConnectHandler = (edit: Replacement[])=>any;
 type ErrOpts = {cause?: any}
 
 class LeisureError extends Error {
@@ -81,8 +81,10 @@ export class Leisure {
     if (typeof doc == 'string') {
       doc = {document: doc}
     }
-    this.protect('handling edits from connect response',
-                 ()=> handle([{offset: -1, length: -1, text: doc.document}]))
+    const result = this.protect('handling edits from connect response', ()=> handle(doc))
+    if (result instanceof Promise) {
+      await result
+    }
   }
 
   async update() {
@@ -110,10 +112,13 @@ export class Leisure {
         const currentEdit = this.protect('generating edits for update', generate)
         let pendingEdits = await this.edit(currentEdit)
         console.log('GOT EDITS', pendingEdits)
-        this.protect('handling update edit response', ()=> handle(pendingEdits))
+        const result = this.protect('handling update edit response', ()=> handle(pendingEdits))
+        if (result instanceof Promise) {
+          await result
+        }
       }
     } catch (err) {
-      error(err)
+      this.error(err)
       return
     }
     // wait for another update and handle it
@@ -129,7 +134,7 @@ export class Leisure {
   }
 
   error(err: any, ...items: any[]): LeisureError {
-    console.log(this, 'error:', ...items)
+    console.log(this, 'error:', err, ...items)
     const opts: ErrOpts = {}
     if (!(err instanceof Error)) {
       opts.cause = err

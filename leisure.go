@@ -88,6 +88,7 @@ type options struct {
 	wantsOrg       bool
 	wantsNoStrings bool
 	dataOnly       bool
+	localFiles     string
 }
 
 type verboser struct{ level int }
@@ -128,6 +129,7 @@ func (opts *options) verbose(level int, format string, args ...any) {
 
 func (opts *options) initCommands() {
 	cmd := opts.add("peer", (*command).peer, "", "Run a leisure peer on unix domain socket PATH and, optionally, on a TCP port.")
+	cmd.flags.StringVar(&opts.localFiles, "html", "", "`DIRECTORY` to serve files from")
 	cmd.flags.IntVar(&opts.tcpPort, "l", -1, "TCP `PORT` to listen on")
 	cmd = opts.add("doc list", (*command).docList, "", "List all documents.")
 	cmd = opts.add("doc create", (*command).docCreate, "", "Create a document.")
@@ -150,6 +152,8 @@ func (opts *options) initCommands() {
 	cmd = opts.addSession("edit", (*command).sessionEdit, "", "Add edits to a session.")
 	cmd = opts.addSession("update", (*command).sessionUpdate, "", "Check if a session has updates.")
 	cmd = opts.addSession("unlock", (*command).sessionUnlock, "", "Unlock session.")
+	cmd = opts.add("parse", (*command).parse, "", "parse an org document. Example: leisure get /default.org | leisure parse")
+	cmd = opts.add("get", (*command).get, "", "HTTP get request to leisure server")
 }
 
 func concat[T any](array []T, values ...T) []T {
@@ -350,7 +354,11 @@ func (cmd *command) peer(opts *options, args []string) {
 	}
 	mux := http.NewServeMux()
 	sv := server.Initialize(opts.unixSocket, mux, server.MemoryStorage)
-	mux.Handle("/", http.FileServer(http.FS(htmlFiles)))
+	if opts.localFiles != "" {
+		mux.Handle("/", http.FileServer(http.Dir(opts.localFiles)))
+	} else {
+		mux.Handle("/", http.FileServer(http.FS(htmlFiles)))
+	}
 	sv.SetVerbose(opts.verbosity.level)
 	fmt.Println("Leisure", strings.Join(args, " "))
 	var listener *net.UnixListener
@@ -384,60 +392,57 @@ func (opts *options) unixClient(path string) *http.Client {
 	}
 }
 
-func (opts *options) request(method, url string, body io.Reader) *http.Response {
-	req, err := http.NewRequest(method, url, body)
-	if err != nil {
-		panic(err)
-	}
-	if body != nil {
-		req.Header.Set("Content-Type", "text/plain")
-	}
-	if opts.cookieFile != "" {
-		jar := nscjar.Parser{}
-		if file, err := os.Open(opts.cookieFile); err == nil {
-			if cookies, err := jar.Unmarshal(file); err != nil {
-				panicWith("%w: could not read cookie file %s", ErrCookieFailure, opts.cookieFile)
-			} else {
-				for _, cookie := range cookies {
-					req.AddCookie(cookie)
-				}
-			}
-		}
-	}
-	client := opts.unixClient(opts.unixSocket)
-	if resp, err := client.Do(req); err != nil {
+func (opts *options) request(method string, body io.Reader, urlStr string, moreUrl ...string) *http.Response {
+	if url, err := url.JoinPath(urlStr, moreUrl...); err != nil {
+		opts.usage(true)
+		return nil
+	} else if req, err := http.NewRequest(method, opts.host+url, body); err != nil {
 		panic(err)
 	} else {
-		if resp.StatusCode == http.StatusOK && opts.cookieFile != "" {
+		opts.verbose(1, "%s %s\n", method, url)
+		if body != nil {
+			req.Header.Set("Content-Type", "text/plain")
+		}
+		if opts.cookieFile != "" {
 			jar := nscjar.Parser{}
-			if file, err := os.Create(opts.cookieFile); err != nil {
-				panicWith("%w: could not write cookie file %s", ErrCookieFailure, opts.cookieFile)
-			} else {
-				opts.verbose(1, "Cookies:%v\n", resp.Cookies())
-				for _, cookie := range resp.Cookies() {
-					if err := jar.Marshal(file, cookie); err != nil {
-						panicWith("%w: could not write cookie file %s", ErrCookieFailure, opts.cookieFile)
+			if file, err := os.Open(opts.cookieFile); err == nil {
+				if cookies, err := jar.Unmarshal(file); err != nil {
+					panicWith("%w: could not read cookie file %s", ErrCookieFailure, opts.cookieFile)
+				} else {
+					for _, cookie := range cookies {
+						req.AddCookie(cookie)
 					}
 				}
 			}
 		}
-		return resp
+		client := opts.unixClient(opts.unixSocket)
+		if resp, err := client.Do(req); err != nil {
+			panic(err)
+		} else {
+			if resp.StatusCode == http.StatusOK && opts.cookieFile != "" {
+				jar := nscjar.Parser{}
+				if file, err := os.Create(opts.cookieFile); err != nil {
+					panicWith("%w: could not write cookie file %s", ErrCookieFailure, opts.cookieFile)
+				} else {
+					opts.verbose(1, "Cookies:%v\n", resp.Cookies())
+					for _, cookie := range resp.Cookies() {
+						if err := jar.Marshal(file, cookie); err != nil {
+							panicWith("%w: could not write cookie file %s", ErrCookieFailure, opts.cookieFile)
+						}
+					}
+				}
+			}
+			return resp
+		}
 	}
 }
 
-func (opts *options) get(base string, components ...string) *http.Response {
-	if u, err := url.JoinPath(base, components...); err != nil {
-		opts.usage(true)
-		return nil
-	} else {
-		fmt.Fprintf(os.Stderr, "getting %s\n", u)
-		return opts.request("GET", u, nil)
-	}
+func (opts *options) get(url string, components ...string) *http.Response {
+	return opts.request("GET", nil, url, components...)
 }
 
 func (opts *options) post(url string, body io.Reader) *http.Response {
-	fmt.Fprintf(os.Stderr, "posting %s\n", url)
-	return opts.request("POST", url, body)
+	return opts.request("POST", body, url)
 }
 
 func (opts *options) postOrGet(url string) *http.Response {
@@ -481,7 +486,7 @@ func (cmd *command) docCreate(opts *options, args []string) {
 		rand.Read(key)
 		opts.docId = hex.EncodeToString(key)
 	}
-	url := opts.host + server.DOC_CREATE + opts.docId
+	url := server.DOC_CREATE + opts.docId
 	if opts.docAlias != "" {
 		url += "?alias=" + opts.docAlias
 	}
@@ -490,16 +495,16 @@ func (cmd *command) docCreate(opts *options, args []string) {
 
 func (cmd *command) docList(opts *options, args []string) {
 	cmd.argCount(0, args)
-	output(opts.get(opts.host, server.DOC_LIST))
+	output(opts.get(server.DOC_LIST))
 }
 
 func (cmd *command) docGet(opts *options, args []string) {
 	cmd.argCount(1, args)
 	if opts.docHash != "" {
-		output(opts.get(opts.host, server.DOC_GET, args[0], "?", "hash", opts.docHash))
+		output(opts.get(server.DOC_GET, args[0], "?", "hash", opts.docHash))
 		return
 	}
-	output(opts.get(opts.host, server.DOC_GET, args[0]))
+	output(opts.get(server.DOC_GET, args[0]))
 }
 
 func (cmd *command) sessionUnlock(opts *options, args []string) {
@@ -526,18 +531,18 @@ func (cmd *command) sessionUnlock(opts *options, args []string) {
 
 func (cmd *command) sessionCreate(opts *options, args []string) {
 	cmd.argCount(2, args)
-	opts.get(opts.host, server.SESSION_CREATE, args[0], args[1])
+	output(opts.get(server.SESSION_CREATE, args[0], args[1]))
 }
 
 func (cmd *command) sessionList(opts *options, args []string) {
 	cmd.argCount(0, args)
-	output(opts.get(opts.host, server.SESSION_LIST))
+	output(opts.get(server.SESSION_LIST))
 }
 
 func (cmd *command) sessionGet(opts *options, args []string) {
 	cmd.argCount(0, args)
 
-	output(opts.get(opts.host + server.SESSION_GET))
+	output(opts.get(server.SESSION_GET))
 }
 
 func panicWith(format string, args ...any) {
@@ -546,7 +551,7 @@ func panicWith(format string, args ...any) {
 
 func (cmd *command) sessionConnect(opts *options, args []string) {
 	cmd.argCount(1, args)
-	url := opts.host + server.SESSION_CONNECT + args[0]
+	url := server.SESSION_CONNECT + args[0]
 	q := ""
 	query := make([]string, 0, 3)
 	if opts.docId != "" {
@@ -572,13 +577,20 @@ func (cmd *command) sessionConnect(opts *options, args []string) {
 }
 
 func (cmd *command) sessionEdit(opts *options, args []string) {
-	url := opts.host + server.SESSION_EDIT
-	output(opts.post(url, os.Stdin))
+	output(opts.post(server.SESSION_EDIT, os.Stdin))
 }
 
 func (cmd *command) sessionUpdate(opts *options, args []string) {
-	url := opts.host + server.SESSION_UPDATE
-	output(opts.get(url))
+	output(opts.get(server.SESSION_UPDATE))
+}
+
+func (cmd *command) parse(opts *options, args []string) {
+	output(opts.post(server.ORG_PARSE, os.Stdin))
+}
+
+func (cmd *command) get(opts *options, args []string) {
+	cmd.argCount(1, args)
+	output(opts.get(args[0]))
 }
 
 func main() {

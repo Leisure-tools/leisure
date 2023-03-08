@@ -1,7 +1,20 @@
 import { Leisure, Edit, Replacement } from './leisure.js'
+import { OrgRenderer, parseOrg } from './orgRenderer.js'
+
+const DEFAULT_TEMPLATES = "/default.org"
 
 async function replace(json: Edit) {
     return replacements(json.replacements)
+}
+
+async function connect(result: any) {
+  if (Array.isArray(result)) {
+    return replacements(result as Replacement[])
+  } else if (typeof result === 'string') {
+    return replacements([{offset: -1, length: -1, text: result}])
+  } else {
+    document.body.innerHTML = `Unknown result type: <pre>${result}</pre>`
+  }
 }
 
 async function replacements(repls: Replacement[]) {
@@ -37,14 +50,17 @@ async function ready() {
   if (document.readyState !== "complete") {
     return
   }
-  if (!new URL(document.location.href).searchParams.has("doc")) {
+  const docUrl = new URL(document.location.href)
+  if (!docUrl.searchParams.has("doc")) {
     document.body.textContent = `No "doc" parameter`
     return
   }
-  const l = new Leisure(document.location.href, "browser",
-                        new URL(document.location.href).searchParams.get("doc"))
-  await l.connect(replacements)
-  l.updateLoop(updates, replace, displayError)
+  const leisure = new Leisure(docUrl.href, "browser", docUrl.searchParams.get("doc"))
+  //await leisure.connect(replacements)
+  //leisure.updateLoop(updates, replace, displayError)
+  const renderer = new OrgRenderer(await parseOrg(docUrl.searchParams.get("templates") || DEFAULT_TEMPLATES))
+  await leisure.connect((repl)=> renderer.connect(repl))
+  leisure.updateLoop(updates, (repl)=>renderer.update(repl), displayError)
 }
 
 if (document.readyState === "complete") {

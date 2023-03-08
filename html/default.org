@@ -1,69 +1,65 @@
-* Default Leisure template
-
-#+begin_src js
-import {renderText} from './orgRenderer.js'
-
-Handlebars.registerHelper('renderText', renderText)
-#+end_src
-
-#+begin_src css
-.leisure-name {
-    font-weight: bold;
-}
-
-.leisure-source,
-.leisure-block,
-.leisure-html,
-.leisure-results,
-.leisure-html,
-.leisure-drawer,
-.leisure-keyword,
-.leisure-table
- {
-    border: solid black 1px;
-    border-radius: 5px;
-}
-#+end_src
+* Templates
 
 #+name: headline
 #+begin_src html
-<span class='{{hlClass}}'>{{renderText contentStr}}</span>
+<div class='{{hlClass}}'>{{{renderText contentStr}}}</div>
+<div class='leisure-headline-content' x-leisure-headline-content='true'></div>
 #+end_src
 
 name: text
 #+begin_src html
-<span>{{renderText this}}</span>
+<span>{{{renderText this}}}</span>
 #+end_src
 
 #+name: source
 #+begin_src html
-Source{{#if name}}<span class='leisure-name'>[{{name}}]</span>: {{language}}{{/if}}
-<div class='leisure-source'>{{contentStr}}</div>
+<div class='leisure-block-holder'>
+  <div class='leisure-source'>
+    <div class='leisure-block-label'>{{#if name}}<span class='leisure-name'>{{name}}: </span>{{/if}}<b><i>{{language}}</i></b></div>
+    <div class='leisure-source-content'>{{contentStr}}</div>
+  </div>
+</div>
 #+end_src
 
 #+name: block
 #+begin_src html
-<div class='leisure-block'>{{text}}</div>
+<div class='leisure-block-holder'>
+  <div class='leisure-block'>
+    <div class='leisure-block-label'>{{begin}}</div>
+    <div class='leisure-block-content'>{{contentStr}}</div>
+    <div class='leisure-block-label'>{{end}}</div>
+  </div>
+</div>
 #+end_src
 
 #+name: results
 #+begin_src html
-<div class='leisure-results'>{{content}}</div>
+<div class='leisure-block-holder'><div class='leisure-results'>{{contentStr}}</div></div>
 #+end_src
 
 #+name: html
 #+begin_src html
-<div class='leisure-html'>{{text}}</div>
+{{{contentStr}}}
 #+end_src
 
 #+name: drawer
 #+begin_src html
-<div class='leisure-drawer'>{{text}}</div>
+<div class='leisure-block-holder'>
+  <div class='leisure-block'>
+    <div class='leisure-block-label'>{{begin}}</div>
+    <div class='leisure-block-content'>{{contentStr}}</div>
+    <div class='leisure-block-label'>{{end}}</div>
+  </div>
+</div>
 #+end_src
 
 #+name: keyword
 #+begin_src html
-<div class='leisure-keyword'>{{text}}</div>
+<div class='leisure-block-holder'>
+  <div class='leisure-block'>
+    <div class='leisure-keyword'>{{text}}</div>
+  </div>
+</div>
 #+end_src
 
 name: table
@@ -77,4 +73,76 @@ name: table
   </tr>
   {{/each}}
 </table>
+#+end_src
+
+* Definitions
+#+begin_src js
+import {renderText} from './orgRenderer.js'
+
+// render org text
+Handlebars.registerHelper('renderText', renderText)
+
+// hide single newlines, hide first newline of double newlines
+Handlebars.registerHelper('hideNls', (t)=> {
+    
+})
+#+end_src
+
+#+begin_src css
+.leisure-name {
+    font-weight: bold;
+}
+
+.leisure-block-holder {
+    display: inline-block;
+}
+
+.leisure-block-label {
+    background: lightgray;
+    border-top-left-radius: 8px;
+    border-top-right-radius: 8px;
+    padding-left: 1ex;
+    padding-right: 1ex;
+}
+
+.leisure-block-content,
+.leisure-html-content,
+.leisure-keyword,
+.leisure-source-content {
+    margin-left: 1ex;
+    margin-right: 1ex;
+    white-space: pre-line;
+}
+
+.leisure-source,
+.leisure-block,
+.leisure-html,
+.leisure-results,
+.leisure-html,
+.leisure-drawer,
+.leisure-table
+{
+    border: solid black 1px;
+    border-radius: 8px;
+    margin-bottom: 1ex;
+}
+
+.leisure-hl-1,
+.leisure-hl-2,
+.leisure-hl-3,
+.leisure-hl-4 {
+    font-size: large;
+    font-weight: bold;
+    margin-top: 1em;
+    margin-bottom: 1em;
+}
+
+.leisure-hl-deep {
+    font-weight: bold;
+    margin-bottom: 1em;
+}
+
+.leisure-headline-content {
+    margin-left: 1ex;
+}
 #+end_src
