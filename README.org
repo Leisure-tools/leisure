@@ -2,38 +2,38 @@
 
 This is an evolving view of the entire Leisure project
 
-* Working Features
-- decentralized operational transform
-- DAG-based document history
-- document model
-- lazy finger tree
-
-* Nascent features (in the works)
-- local server for editors, languages, browsers, etc.
-  - emacs
-  - vs code
-
-* Planned features
-- org-mode document model
-- Julia support
-- JavaScript support
-- file observer/writer
-- Reactive HTML rendering
-- shared and local metadata
-  - local metadata
-    - arbitrary TOML data
-    - editors can use it for document preferences (suppress notification, etc.)
-  - TOML doc containing information about the document
-- peer-to-peer support with security info in metadata
-  - encryption with rotating keys
-  - owners, editors, commenters, viewers
-  - region permissions (using markers)
-- region comments
-  - metadata blocks have info
-  - contents is an org doc
-  - markers delimit region
-  - can be used for git issues and other scraped information
-- SQL persistence
+| Feature                              | working |
+|--------------------------------------+---------|
+| decentralized operational transform  | ✅      |
+| DAG-based document history           | ✅      |
+| document model                       | ✅      |
+| lazy finger tree                     | ✅      |
+| server                               | ✅      |
+| org parsing                          | ✅      |
+| data model                           | ✅      |
+| leisure command                      | ✅      |
+|--------------------------------------+---------|
+| emacs support                        | 👷      |
+| browser rendering                    | 👷      |
+|--------------------------------------+---------|
+| VS Code support                      | ⌛      |
+| peer to peer                         | ⌛      |
+| - encryption (rotating keys)         | ⌛      |
+| - membership                         | ⌛      |
+| -   owner, editor, commenter, viewer | ⌛      |
+| - region permissions                 | ⌛      |
+| document groups                      | ⌛      |
+| - metadata                           | ⌛      |
+| - local metadata (prefs, etc.)       | ⌛      |
+| - region comments                    | ⌛      |
+| -   comment is a doc                 | ⌛      |
+| -   markers for region               | ⌛      |
+| marker support                       | ⌛      |
+| - blocks have a list of markers      | ⌛      |
+| julia support                        | ⌛      |
+| sql persistence                      | ⌛      |
+| remote execution                     | ⌛      |
+| file observer / writer               | ⌛      |
 
 * Use cases
 ** Remote execution with multiple servers

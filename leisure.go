@@ -142,7 +142,9 @@ func (opts *options) initCommands() {
 	cmd.flags.BoolVar(&opts.wantsOrg, "org", false, "receive org changes")
 	cmd.flags.BoolVar(&opts.wantsNoStrings, "nostrings", false, "receive org changes")
 	cmd.flags.BoolVar(&opts.dataOnly, "data", false, "receive only data changes")
-	cmd = opts.addSession("get", (*command).sessionGet, "", "Get a session's document.")
+	cmd = opts.addSession("doc", (*command).sessionDoc, "", "Get a session's document.")
+	cmd = opts.addSession("get", (*command).sessionGet, "", "Get data.")
+	cmd = opts.addSession("set", (*command).sessionSet, "", "Set data.")
 	cmd = opts.addSession("connect", (*command).sessionConnect, "SESSIONID", "Connect to a session.")
 	cmd.flags.StringVar(&opts.docId, "doc", "", "`ID or ALIA` of document")
 	cmd.flags.BoolVar(&opts.wantsOrg, "org", false, "receive org changes")
@@ -152,8 +154,8 @@ func (opts *options) initCommands() {
 	cmd = opts.addSession("edit", (*command).sessionEdit, "", "Add edits to a session.")
 	cmd = opts.addSession("update", (*command).sessionUpdate, "", "Check if a session has updates.")
 	cmd = opts.addSession("unlock", (*command).sessionUnlock, "", "Unlock session.")
-	cmd = opts.add("parse", (*command).parse, "", "parse an org document. Example: leisure get /default.org | leisure parse")
-	cmd = opts.add("get", (*command).get, "", "HTTP get request to leisure server")
+	cmd = opts.add("parse", (*command).parse, "", "parse an org document. Example: leisure get /default.org | leisure parse.")
+	cmd = opts.add("get", (*command).get, "", "HTTP get request to leisure server.")
 }
 
 func concat[T any](array []T, values ...T) []T {
@@ -509,6 +511,7 @@ func (cmd *command) docGet(opts *options, args []string) {
 
 func (cmd *command) sessionUnlock(opts *options, args []string) {
 	cmd.argCount(0, args)
+	result := false
 	if opts.cookieFile != "" {
 		name := opts.lockName()
 		owner, user, pid := opts.checkLock(name)
@@ -521,12 +524,10 @@ func (cmd *command) sessionUnlock(opts *options, args []string) {
 		} else if err := os.Remove(name); err != nil {
 			panicWith("%w: could not remove lock file %s, %s",
 				server.NewLeisureError(ErrUnlocking.Type, "filename", name), name, err.Error())
-		} else {
-			fmt.Printf("true")
 		}
-	} else {
-		fmt.Printf("false")
+		result = true
 	}
+	fmt.Println(result)
 }
 
 func (cmd *command) sessionCreate(opts *options, args []string) {
@@ -539,10 +540,22 @@ func (cmd *command) sessionList(opts *options, args []string) {
 	output(opts.get(server.SESSION_LIST))
 }
 
-func (cmd *command) sessionGet(opts *options, args []string) {
+func (cmd *command) sessionDoc(opts *options, args []string) {
 	cmd.argCount(0, args)
+	output(opts.get(server.SESSION_DOCUMENT))
+}
 
-	output(opts.get(server.SESSION_GET))
+func (cmd *command) sessionGet(opts *options, args []string) {
+	cmd.argCount(1, args)
+	output(opts.get(server.SESSION_GET, args[0]))
+}
+
+func (cmd *command) sessionSet(opts *options, args []string) {
+	cmd.argCount(1, args)
+	if url, err := url.JoinPath(server.SESSION_SET, args[0]); err == nil {
+		output(opts.post(url, os.Stdin))
+	}
+	opts.usage(true)
 }
 
 func panicWith(format string, args ...any) {
