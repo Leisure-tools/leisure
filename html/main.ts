@@ -58,7 +58,7 @@ async function ready() {
   const useOrg = (docUrl.searchParams.get("org") ?? "").toLowerCase() == "true"
   const leisure = new Leisure(docUrl.href, "browser", docUrl.searchParams.get("doc"))
   if (useOrg) {
-    const renderer = new OrgRenderer(await parseOrg(docUrl.searchParams.get("templates") || DEFAULT_TEMPLATES))
+    const renderer = new OrgRenderer(document.body, await parseOrg(docUrl.searchParams.get("templates") || DEFAULT_TEMPLATES))
     await leisure.connect(true, (repl)=> renderer.connect(repl))
     leisure.updateLoop(updates, (repl)=>renderer.update(repl), displayError)
   } else {

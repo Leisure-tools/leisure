@@ -53,12 +53,12 @@
   :type 'string
   :group 'leisure)
 
-(defcustom leisure-min-wait 0.25
+(defcustom leisure-min-wait 0.1
   "Minimum time to wait after activity before sending an edit to Leisure"
   :type 'number
   :group 'leisure)
 
-(defcustom leisure-max-wait 0.75
+(defcustom leisure-max-wait 0.25
   "Maximum time to wait after activity before sending an edit to Leisure"
   :type 'number
   :group 'leisure)
@@ -89,7 +89,9 @@
   wait-start
   activity-timer
   flush-timer
-  monitoring)
+  monitoring
+  update-buffer
+  error-buffer)
 
 (defun leisure-validate-program ()
   (message "validating leisure")
@@ -237,6 +239,7 @@
 
 (defun leisure-parse (status buf)
   (with-current-buffer buf
+    (message "received\n%s" (buffer-string))
     (let ((result (json-parse-buffer :null-object nil)))
       (if (eql status 0)
           ;; on success, return the result
@@ -316,16 +319,18 @@
                                                  "session" "update"
                                                  "-cookies" (leisure-cookies))
                                            " "))
+        (setf (leisure-data-update-buffer leisure-info) "leisure-update")
+        (setf (leisure-data-error-buffer leisure-info) "leisure-update-errors")
         (make-process
          :name "leisure-update"
-         :buffer "leisure-update"
+         :buffer (leisure-data-update-buffer leisure-info)
          :command (list leisure-program
                         "session" "update"
                         "-cookies" (leisure-cookies))
          :noquery t
          :connection-type 'pty
          :sentinel (lambda (proc status) (leisure-update-result buf proc status))
-         :stderr "leisure-update-errors"))))
+         :stderr (leisure-data-error-buffer leisure-info)))))
 
 (defun leisure-update-result (buf proc status)
   (message "got update result: %s, buffer: %s" status (buffer-name))

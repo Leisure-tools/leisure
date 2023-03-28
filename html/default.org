@@ -1,18 +1,15 @@
 * Templates
 
-#+name: headline
-#+begin_src html
+#+begin_src html :view Leisure.headline
 <div class='{{hlClass}}'>{{{renderText contentStr}}}</div>
 <div class='leisure-headline-content' x-leisure-headline-content='true'></div>
 #+end_src
 
-name: text
-#+begin_src html
-<span>{{{renderText this}}}</span>
+#+begin_src html :view Leisure.text
+<span>{{{renderText text}}}</span>
 #+end_src
 
-#+name: source
-#+begin_src html
+#+begin_src html :view Leisure.source
 <div class='leisure-block-holder'>
   <div class='leisure-source'>
     <div class='leisure-block-label'>{{#if name}}<span class='leisure-name'>{{name}}: </span>{{/if}}<b><i>{{language}}</i></b></div>
@@ -21,8 +18,7 @@ name: text
 </div>
 #+end_src
 
-#+name: block
-#+begin_src html
+#+begin_src html :view Leisure.block
 <div class='leisure-block-holder'>
   <div class='leisure-block'>
     <div class='leisure-block-label'>{{begin}}</div>
@@ -32,18 +28,15 @@ name: text
 </div>
 #+end_src
 
-#+name: results
-#+begin_src html
+#+begin_src html :view Leisure.results
 <div class='leisure-block-holder'><div class='leisure-results'>{{contentStr}}</div></div>
 #+end_src
 
-#+name: html
-#+begin_src html
+#+begin_src html :view Leisure.html
 {{{contentStr}}}
 #+end_src
 
-#+name: drawer
-#+begin_src html
+#+begin_src html :view Leisure.drawer
 <div class='leisure-block-holder'>
   <div class='leisure-block'>
     <div class='leisure-block-label'>{{begin}}</div>
@@ -53,8 +46,7 @@ name: text
 </div>
 #+end_src
 
-#+name: keyword
-#+begin_src html
+#+begin_src html :view Leisure.keyword
 <div class='leisure-block-holder'>
   <div class='leisure-block'>
     <div class='leisure-keyword'>{{text}}</div>
@@ -62,8 +54,7 @@ name: text
 </div>
 #+end_src
 
-name: table
-#+begin_src html
+#+begin_src html :view Leisure.table
 <table class='leisure-table'>
   {{#each values}}
   <tr>
@@ -89,6 +80,10 @@ Handlebars.registerHelper('hideNls', (t)=> {
 #+end_src
 
 #+begin_src css
+.leisure-view {
+    display: inline-block;
+}
+
 .leisure-name {
     font-weight: bold;
 }

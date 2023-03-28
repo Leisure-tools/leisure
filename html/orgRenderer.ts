@@ -3,7 +3,10 @@ import {VERSION} from './leisure.js'
 const HEADLINE_RE = /^(\*+)( +)(.*)\n$/;
 const HTML_RE = /^(#\+name:[^\n]*\n)?(.*)(#\+begin_html[^\n]*\n)(.*\n)(#\+end_html[^\n]*\n)/is;
 const SOURCE_RE = /^(?:(#\+name: *)([^\n]*\n))?(.*)(#\+begin_src *([^ \n]*)[^\n]*\n)(.*\n)(#\+end_src[^\n]*\n)((.*\n)?(#\+result:.*\n))?$/is;
-const MARKUP_RE = /\*[^*]+\*|\/[^/]+\//
+const MARKUP_RE = /\[\[([^\]]*)\](?:\[([^\]]*)\])?\]|\*[^*]+\*|\/[^/]+\//;
+const VIEW_RE = /#\+begin_src +html (?:[^\n]+ )?:view +([^\n]+)(?: [^\n]+)?\n/is;
+const LEISURE_LINK_RE = /^leisure:(.*)$/i
+const HREF_LINK_RE = /^http(s)?:.*$/i
 
 export const ORG_PARSE = VERSION + "/org/parse";
 
@@ -92,6 +95,7 @@ export function renderText(text: string) {
   let pos = 0
   let result = ''
 
+  console.log('render:', text)
   while (text.length) {
     const mark = text.match(MARKUP_RE)
     if (!mark) {
@@ -107,6 +111,24 @@ export function renderText(text: string) {
       case '/':
         result += `<i>${renderText(matched.slice(1, matched.length - 1))}</i>`
         break
+      case '[':
+        const link = mark[1]
+        if (link.match(LEISURE_LINK_RE)) {
+          let ref = link.match(LEISURE_LINK_RE)[1]
+          let namespace = 'default'
+          let slashInd = ref.indexOf('/')
+
+          if (slashInd != -1) {
+            namespace = ref.slice(slashInd + 1)
+            ref = ref.slice(0, slashInd)
+          }
+          result += `<div class='leisure-view' x-view='${ref}' x-namespace='${namespace}'></div>`
+        } else if (link.match(HREF_LINK_RE)) {
+          result += `<a href='${mark[1]}'>${mark[2] || ''}</span>`
+        } else {
+          result += `<span x-link-ref='${mark[1]}'>${mark[2] || ''}</span>`
+        }
+        break
     }
     text = text.slice(mark.index + matched.length)
   }
@@ -114,26 +136,28 @@ export function renderText(text: string) {
 }
 
 export class OrgRenderer {
-  templates: {[t: string]: TemplateFunc}
+  dom: any
   chunks: {[id: string]: Chunk}
   serial: number
   orphans: HTMLDivElement
+  refs: {[id: string]: string}
+  views: {[key: string]: (obj: any)=> string}
+  namedChunks: {[id: string]: string}
 
-  constructor(templateChunks: Chunk[]) {
+  constructor(dom:HTMLElement, templateChunks: Chunk[]) {
     const scripts = [] as HTMLScriptElement[]
-    const templates = [] as Source[]
-    this.templates = {}
+    this.dom = dom
     this.chunks = {}
     this.serial = 0
+    this.views = {}
+    this.namedChunks = {}
     this.orphans = document.createElement('div')
     this.orphans.style.display = 'none'
     document.body.append(this.orphans)
     for (const chunk of templateChunks) {
-      this.populateChunk(chunk)
+      this.populateChunk(chunk, false)
       if (isSource(chunk)) {
-        if (chunk.language === 'html' && templateNames.has(chunk.name)) {
-          templates.push(chunk)
-        } else if (chunk.language === 'css') {
+        if (chunk.language === 'css') {
           const style = document.createElement('style')
           style.setAttribute('org-id', chunk.id)
           style.textContent = chunk.contentStr
@@ -152,10 +176,6 @@ export class OrgRenderer {
     for (const script of scripts) {
       document.body.append(script)
     }
-    for (const template of templates) {
-      console.log('ADDING TEMPLATE', template)
-      this.templates[template.name] = compile(template.contentStr)
-    }
   }
 
   connect(result: any) {
@@ -163,9 +183,14 @@ export class OrgRenderer {
       this.chunks[chunk.id] = chunk
     }
     for (const chunk of result.chunks) {
+      this.populateChunk(chunk)
+    }
+    for (const chunk of result.chunks) {
       this.displayChunk(chunk)
+      this.showViews()
     }
     this.clearOrphans()
+    console.log('displayed', this)
   }
 
   clearOrphans() {
@@ -212,9 +237,12 @@ export class OrgRenderer {
     }
     for (const chunk of all) {
       this.displayChunk(chunk)
+      if (isSource(chunk) && chunk.name) {
+        this.showViewNamed(this.dom, chunk.name, chunk)
+      }
     }
     this.clearOrphans()
-    console.log('updated', all)
+    console.log('updated', all, this)
   }
 
   orderChunks(chunkOrder: string[], chunks: Chunk[]) {
@@ -230,7 +258,7 @@ export class OrgRenderer {
     if (typeof chunk != 'string') {
       chunk = chunk.id
     }
-    return document.querySelector(`[x-leisure-orgid="${chunk}"]`) as HTMLElement
+    return this.dom.querySelector(`[x-leisure-orgid="${chunk}"]`) as HTMLElement
   }
 
   placeDom(dom: HTMLElement, chunk: Chunk) {
@@ -291,13 +319,45 @@ export class OrgRenderer {
     }
   }
 
+  showViews() {
+    const names = new Set<string>()
+
+    for (const div of this.dom.querySelectorAll('[x-view]')) {
+      names.add(div.getAttribute('x-view'))
+    }
+    for (const name of names) {
+      this.showViewNamed(this.dom, name)
+    }
+  }
+
+  showViewNamed(dom, name: string, chunk:Source = null) {
+    if (!chunk) {
+      chunk = this.chunks[this.namedChunks[name]] as Source
+    }
+    const chunkType = chunk?.value?.LEISURE_TYPE
+
+    if (chunkType) {
+      for (const div of dom.querySelectorAll(`[x-view=${name}]`)) {
+        const view = this.views[`${chunkType}/${div.getAttribute('x-namespace')}`]
+
+        console.log('view name: ', `${chunkType}/${div.getAttribute('x-namespace')}`)
+        console.log('view:', div, chunk, view)
+        if (view) {
+          div.innerHTML = view(chunk.value)
+        }
+      }
+    }
+  }
+
   // add properties to chunk to support templates
-  populateChunk(chunk: Chunk) {
+  populateChunk(chunk: Chunk, index = true) {
     if (chunk.serial === this.serial) {
       return
     }
     chunk.serial = this.serial
-    this.chunks[chunk.id] = chunk
+    if (index) {
+      this.chunks[chunk.id] = chunk
+    }
     switch (chunk.type) {
 	  case 'headline': {
         const hl = chunk as Headline
@@ -309,12 +369,17 @@ export class OrgRenderer {
       }
 	  case 'source': {
         const src = chunk as Source
-        const [, preName, name, inter1, begin, language, content, end, inter2, result] = chunk.text.match(SOURCE_RE)
+        const match = chunk.text.match(SOURCE_RE) as any
+        const [, preName, name, inter1, begin, language, content, end, inter2, result] = match
         src.raw = {preName, name, inter1, begin, language, content, end, inter2, result}
         src.name = (name ?? '').trim()
         src.language = (language ?? '').toLowerCase()
         src.contentStr = content
         src.resultStr = result
+        if (src.name) {
+          this.namedChunks[src.name] = chunk.id
+        }
+        this.scanView(src)
       }
       case 'block': {
         const bl = chunk as Block
@@ -331,8 +396,18 @@ export class OrgRenderer {
     }
   }
 
+  scanView(src: Source) {
+    const match = src.raw.begin.match(VIEW_RE)
+    if (!match) {
+      return
+    }
+    let [, viewType, viewNamespace] = match
+    viewNamespace = viewNamespace ? viewNamespace.slice(1) : 'default'
+    this.views[`${viewType}/${viewNamespace}`] = compile(src.raw.content)
+  }
+
   renderChunk(chunk: Chunk) {
-    const template = this.templates[chunk.type]
+    const template = this.views[`Leisure.${chunk.type}/default`]
     if (template) {
       return template(chunk)
     }

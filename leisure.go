@@ -185,7 +185,6 @@ func (opts *options) add(cmdName string, fn commandFunc, args, description strin
 				if cmd := opts.cmds[keyPrefix+args[0]]; cmd == nil {
 					panicWith("%w: unrecognized command: %s", ErrBadCommand, os.Args[1])
 				} else {
-					fmt.Fprintf(os.Stderr, "command: %v\n", cmd)
 					cmd.call(opts, args[1:])
 				}
 			}
@@ -321,6 +320,16 @@ func (opts *options) checkLock(lockName string) (bool, string, int) {
 }
 
 func (cmd *command) call(opts *options, args []string) {
+	a := make([]string, 0, len(args))
+	if cmd.leaf {
+		for _, arg := range args {
+			if len(arg) > 0 && arg[0] == '-' {
+				break
+			}
+			a = append(a, arg)
+		}
+		args = args[len(a):]
+	}
 	if err := cmd.flags.Parse(args); err != nil {
 		fmt.Fprintln(os.Stderr, "ERROR:", err)
 		cmd.usage()
@@ -336,7 +345,7 @@ func (cmd *command) call(opts *options, args []string) {
 			panicWith("%w: the cookies file %s is already locked by user %s, process %d", e, opts.cookieFile, user, pid)
 		}
 	}
-	cmd.fn(cmd, opts, cmd.flags.Args())
+	cmd.fn(cmd, opts, append(a, cmd.flags.Args()...))
 }
 
 func (cmd *command) argCount(count int, args []string) {
@@ -362,7 +371,7 @@ func (cmd *command) peer(opts *options, args []string) {
 		mux.Handle("/", http.FileServer(http.FS(htmlFiles)))
 	}
 	sv.SetVerbose(opts.verbosity.level)
-	fmt.Println("Leisure", strings.Join(args, " "))
+	fmt.Fprintln(os.Stderr, "Leisure", strings.Join(args, " "))
 	var listener *net.UnixListener
 	die = func() {
 		if listener != nil {
@@ -379,9 +388,20 @@ func (cmd *command) peer(opts *options, args []string) {
 		panicWith("%w: could not listen on unix socket %s", ErrSocketFailure, opts.unixSocket)
 	} else {
 		listener.SetUnlinkOnClose(true)
-		fmt.Printf("RUNNING UNIX DOMAIN SERVER: %+v\n", addr)
-		log.Fatal(http.Serve(listener, mux))
+		fmt.Fprintf(os.Stderr, "RUNNING UNIX DOMAIN SERVER: %+v\n", addr)
+		log.Fatal(http.Serve(listener, &myMux{mux}))
 	}
+}
+
+type myMux struct {
+	*http.ServeMux
+}
+
+func (mux *myMux) ServeHTTP(w http.ResponseWriter, r *http.Request) {
+	if r.URL.RawPath != "" {
+		r.URL.Path = r.URL.RawPath
+	}
+	mux.ServeMux.ServeHTTP(w, r)
 }
 
 func (opts *options) unixClient(path string) *http.Client {
@@ -395,13 +415,21 @@ func (opts *options) unixClient(path string) *http.Client {
 }
 
 func (opts *options) request(method string, body io.Reader, urlStr string, moreUrl ...string) *http.Response {
-	if url, err := url.JoinPath(urlStr, moreUrl...); err != nil {
+	for i, str := range moreUrl {
+		moreUrl[i] = url.PathEscape(str)
+	}
+	if path, err := url.JoinPath(urlStr, moreUrl...); err != nil {
 		opts.usage(true)
 		return nil
-	} else if req, err := http.NewRequest(method, opts.host+url, body); err != nil {
+	} else if req, err := http.NewRequest(method, opts.host+path, body); err != nil {
 		panic(err)
 	} else {
-		opts.verbose(1, "%s %s\n", method, url)
+		req.URL = &url.URL{
+			Scheme: req.URL.Scheme,
+			Host:   req.URL.Host,
+			Opaque: path,
+		}
+		opts.verbose(1, "%s %s\n", method, req.URL.String())
 		if body != nil {
 			req.Header.Set("Content-Type", "text/plain")
 		}
