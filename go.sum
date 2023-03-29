@@ -10,6 +10,16 @@ github.com/kr/pretty v0.1.0/go.mod h1:dAy3ld7l9f0ibDNOQOHHMYYIIbhfbHSm3C4ZsoJORN
 github.com/kr/pty v1.1.1/go.mod h1:pFQYn66WHrOpPYNljwOMqo10TkYh1fy3cYio2l3bCsQ=
 github.com/kr/text v0.1.0 h1:45sCR5RtlFHMR4UwH9sdQ5TC8v0qDQCHnXt+kaKSTVE=
 github.com/kr/text v0.1.0/go.mod h1:4Jbv+DJW3UT/LiOwJeYQe1efqtUx/iVham/4vfdArNI=
+github.com/leisure-tools/document v0.0.16 h1:NTS1uOWqhiL2iDPVzOyQj8lSkdB14zbMVWFaEiM4rAo=
+github.com/leisure-tools/document v0.0.16/go.mod h1:vscltzz/6+7AOsAejz/EXTApIY8+4Zi9Cw7SJIFjcv4=
+github.com/leisure-tools/history v0.0.9 h1:Ta1SEfh3iXqe+Z9aIun0OXWYt23P6nsDIapY78ySRqk=
+github.com/leisure-tools/history v0.0.9/go.mod h1:q1KRcTA3uMA4CVAkLnAp4J8pryDkD230HiAMCxyZuPo=
+github.com/leisure-tools/lazyfingertree v0.0.12 h1:w284wLc6HSht+QqA5AGzsmOzPlPJQyeQN5y1TsgQ05A=
+github.com/leisure-tools/lazyfingertree v0.0.12/go.mod h1:Hdkw7KtXYaRIcEVboWt8n+FviUgsRBxIwBflAXt6tgY=
+github.com/leisure-tools/org v0.0.6 h1:B+loEpqG/tWUm6CSH/7djfWmxbD1495RXsSfAFPqh4g=
+github.com/leisure-tools/org v0.0.6/go.mod h1:IcjLpWxntinAt8sxO6aHRcMuionk2Fjd660MwLT0hAc=
+github.com/leisure-tools/server v0.0.9 h1:ch+K6L1e4kGWWXNpBunBdDN3D4x8Vko0eAxspjXISmE=
+github.com/leisure-tools/server v0.0.9/go.mod h1:4DlZEdMBRZNZOZlHdVm90M+rdB7KJl/QCA6THo+T2Jk=
 github.com/nu7hatch/gouuid v0.0.0-20131221200532-179d4d0c4d8d h1:VhgPp6v9qf9Agr/56bj7Y/xa04UccTW04VP0Qed4vnQ=
 github.com/nu7hatch/gouuid v0.0.0-20131221200532-179d4d0c4d8d/go.mod h1:YUTz3bUH2ZwIWBy3CJBeOBEugqcmXREj14T+iG/4k4U=
 github.com/pmezard/go-difflib v1.0.0 h1:4DBwDE0NGyQoBHbLQYPwSUPoCMWR5BEzIk/f1lZbAQM=
