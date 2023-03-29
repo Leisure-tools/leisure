@@ -10,16 +10,6 @@ github.com/kr/pretty v0.1.0/go.mod h1:dAy3ld7l9f0ibDNOQOHHMYYIIbhfbHSm3C4ZsoJORN
 github.com/kr/pty v1.1.1/go.mod h1:pFQYn66WHrOpPYNljwOMqo10TkYh1fy3cYio2l3bCsQ=
 github.com/kr/text v0.1.0 h1:45sCR5RtlFHMR4UwH9sdQ5TC8v0qDQCHnXt+kaKSTVE=
 github.com/kr/text v0.1.0/go.mod h1:4Jbv+DJW3UT/LiOwJeYQe1efqtUx/iVham/4vfdArNI=
-github.com/leisure-tools/document v0.0.13 h1:RXGcvKt4r/B+JqudFh6X+N1vxywMyMYL4+lXb+7N+uE=
-github.com/leisure-tools/document v0.0.13/go.mod h1:vscltzz/6+7AOsAejz/EXTApIY8+4Zi9Cw7SJIFjcv4=
-github.com/leisure-tools/history v0.0.6 h1:wGdXjkmQLEAeH9L5eLVvY9jZmJ4gg31yIcVHFo8dAaI=
-github.com/leisure-tools/history v0.0.6/go.mod h1:UV+RYB6ydOiixG3PtCtdXjMlFAdSg5ZjaLU4DGD6vvE=
-github.com/leisure-tools/lazyfingertree v0.0.12 h1:w284wLc6HSht+QqA5AGzsmOzPlPJQyeQN5y1TsgQ05A=
-github.com/leisure-tools/lazyfingertree v0.0.12/go.mod h1:Hdkw7KtXYaRIcEVboWt8n+FviUgsRBxIwBflAXt6tgY=
-github.com/leisure-tools/org v0.0.2 h1:F39waPizzfzzVPoBFp+ULieO0+NU27grjHU7Arng+o4=
-github.com/leisure-tools/org v0.0.2/go.mod h1:dtDmVopI/RUFqvYEHOjYrfwz6sNXq2Ru2/FzYzL/Ue0=
-github.com/leisure-tools/org v0.0.3 h1:RmVQ57kw44Ni0Jh8Ja9O7wsdYD4xqwG6b3HhhaJRkvQ=
-github.com/leisure-tools/org v0.0.3/go.mod h1:ilaaGBWW++ro7OSqDyEU+QPtF38uQ6wkcaEkXA9aXAk=
 github.com/nu7hatch/gouuid v0.0.0-20131221200532-179d4d0c4d8d h1:VhgPp6v9qf9Agr/56bj7Y/xa04UccTW04VP0Qed4vnQ=
 github.com/nu7hatch/gouuid v0.0.0-20131221200532-179d4d0c4d8d/go.mod h1:YUTz3bUH2ZwIWBy3CJBeOBEugqcmXREj14T+iG/4k4U=
 github.com/pmezard/go-difflib v1.0.0 h1:4DBwDE0NGyQoBHbLQYPwSUPoCMWR5BEzIk/f1lZbAQM=
