@@ -92,6 +92,7 @@ function isSource(ch: Chunk): ch is Source {
 }
 
 export function renderText(text: string) {
+  const orig = text
   let pos = 0
   let result = ''
 
@@ -131,6 +132,9 @@ export function renderText(text: string) {
         break
     }
     text = text.slice(mark.index + matched.length)
+  }
+  if (orig.endsWith("\n\n")) {
+    result += "<br>"
   }
   return result
 }

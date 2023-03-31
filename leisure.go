@@ -47,7 +47,7 @@ var die = func() {
 	os.Exit(exitCode)
 }
 
-//go:embed all:html
+//go:embed html/*
 var html embed.FS
 
 func (opts *options) usage(err bool) {
@@ -89,6 +89,7 @@ type options struct {
 	wantsNoStrings bool
 	dataOnly       bool
 	localFiles     string
+	ofs            *Overlay
 }
 
 type verboser struct{ level int }
@@ -103,9 +104,25 @@ type command struct {
 	session        bool
 }
 
+type Overlay struct {
+	stack []fs.FS
+}
+
+func (ofs *Overlay) Open(name string) (file fs.File, err error) {
+	for i := len(ofs.stack) - 1; i >= 0; i-- {
+		file, err = ofs.stack[i].Open(name)
+		if err == nil {
+			return
+		}
+	}
+	return
+}
+
 type commandFunc = func(cmd *command, opts *options, args []string)
 
 type commands map[string]*command
+
+var htmlDirs = make([]fs.FS, 0, 4)
 
 func (opts *options) addGlobalOpts(fl *flag.FlagSet) {
 	fl.StringVar(&opts.unixSocket, "unixsocket", ".leisure.socket", "`PATH` to unix socket -- PATH will be created and must not exist beforehand")
@@ -205,10 +222,15 @@ func (opts *options) addSession(cmdName string, fn commandFunc, args, descriptio
 }
 
 func newOptions() *options {
+	html, err := fs.Sub(html, "html")
+	if err != nil {
+		panic(err)
+	}
 	opts := &options{
 		host:       "http://leisure", // assume unix socket
 		unixSocket: ".leisure.socket",
 		cmds:       commands{},
+		ofs:        &Overlay{append(make([]fs.FS, 0, 2), html)},
 	}
 	opts.initCommands()
 	return opts
@@ -354,22 +376,20 @@ func (cmd *command) argCount(count int, args []string) {
 	}
 }
 
+func (cmd *command) file(opts *options, args []string) {
+}
+
 func (cmd *command) peer(opts *options, args []string) {
 	opts.unixSocket = DEFAULT_UNIX_SOCKET
 	if len(args) > 0 {
 		opts.unixSocket = args[0]
 	}
-	htmlFiles, err := fs.Sub(html, "html")
-	if err != nil {
-		panic(err)
-	}
 	mux := http.NewServeMux()
 	sv := server.Initialize(opts.unixSocket, mux, server.MemoryStorage)
 	if opts.localFiles != "" {
-		mux.Handle("/", http.FileServer(http.Dir(opts.localFiles)))
-	} else {
-		mux.Handle("/", http.FileServer(http.FS(htmlFiles)))
+		opts.ofs.stack = append(opts.ofs.stack, os.DirFS(opts.localFiles))
 	}
+	mux.Handle("/", http.FileServer(http.FS(opts.ofs)))
 	sv.SetVerbose(opts.verbosity.level)
 	fmt.Fprintln(os.Stderr, "Leisure", strings.Join(args, " "))
 	var listener *net.UnixListener
@@ -487,14 +507,18 @@ func (opts *options) postOrGet(url string) *http.Response {
 }
 
 func output(resp *http.Response) {
+	outputBasic(resp, false)
+}
+
+func outputBasic(resp *http.Response, parseJson bool) {
+	var obj any
+	var buf []byte
+	var err error
 	if resp.StatusCode != http.StatusOK {
 		exitCode = resp.StatusCode
-		var obj any
-		var buf []byte
-		var err error
 		buf, err = io.ReadAll(resp.Body)
 		if err != nil {
-			return
+			panic(err)
 		} else if err := json.Unmarshal(buf, &obj); err == nil {
 			if errObj, ok := obj.(map[string]any); ok && errObj["error"] != "" {
 				errObj["args"] = os.Args
@@ -507,7 +531,19 @@ func output(resp *http.Response) {
 		fmt.Print(string(buf))
 		return
 	}
-	io.Copy(os.Stdout, resp.Body)
+	if !parseJson {
+		io.Copy(os.Stdout, resp.Body)
+		return
+	}
+	buf, err = io.ReadAll(resp.Body)
+	if err != nil {
+		panic(err)
+	}
+	err = json.Unmarshal(buf, &obj)
+	if err != nil {
+		panic(err)
+	}
+	fmt.Print(obj)
 }
 
 func (cmd *command) docCreate(opts *options, args []string) {
@@ -531,10 +567,10 @@ func (cmd *command) docList(opts *options, args []string) {
 func (cmd *command) docGet(opts *options, args []string) {
 	cmd.argCount(1, args)
 	if opts.docHash != "" {
-		output(opts.get(server.DOC_GET, args[0], "?", "hash", opts.docHash))
+		outputBasic(opts.get(server.DOC_GET, args[0], "?", "hash", opts.docHash), true)
 		return
 	}
-	output(opts.get(server.DOC_GET, args[0]))
+	outputBasic(opts.get(server.DOC_GET, args[0]), true)
 }
 
 func (cmd *command) sessionUnlock(opts *options, args []string) {
