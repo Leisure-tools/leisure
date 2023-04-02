@@ -125,7 +125,11 @@ type commands map[string]*command
 var htmlDirs = make([]fs.FS, 0, 4)
 
 func (opts *options) addGlobalOpts(fl *flag.FlagSet) {
-	fl.StringVar(&opts.unixSocket, "unixsocket", ".leisure.socket", "`PATH` to unix socket -- PATH will be created and must not exist beforehand")
+	home, err := os.UserHomeDir()
+	if err != nil {
+		panic("Could not get home directory")
+	}
+	fl.StringVar(&opts.unixSocket, "unixsocket", path.Join(home, DEFAULT_UNIX_SOCKET), "`PATH` to unix socket -- PATH will be created and must not exist beforehand")
 	fl.Var(&opts.verbosity, "v", "verbose")
 }
 
@@ -227,10 +231,9 @@ func newOptions() *options {
 		panic(err)
 	}
 	opts := &options{
-		host:       "http://leisure", // assume unix socket
-		unixSocket: ".leisure.socket",
-		cmds:       commands{},
-		ofs:        &Overlay{append(make([]fs.FS, 0, 2), html)},
+		host: "http://leisure", // assume unix socket
+		cmds: commands{},
+		ofs:  &Overlay{append(make([]fs.FS, 0, 2), html)},
 	}
 	opts.initCommands()
 	return opts
@@ -380,7 +383,6 @@ func (cmd *command) file(opts *options, args []string) {
 }
 
 func (cmd *command) peer(opts *options, args []string) {
-	opts.unixSocket = DEFAULT_UNIX_SOCKET
 	if len(args) > 0 {
 		opts.unixSocket = args[0]
 	}
@@ -424,7 +426,7 @@ func (mux *myMux) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	mux.ServeMux.ServeHTTP(w, r)
 }
 
-func (opts *options) unixClient(path string) *http.Client {
+func (opts *options) unixClient() *http.Client {
 	return &http.Client{
 		Transport: &http.Transport{
 			DialContext: func(_ context.Context, _, _ string) (net.Conn, error) {
@@ -465,7 +467,7 @@ func (opts *options) request(method string, body io.Reader, urlStr string, moreU
 				}
 			}
 		}
-		client := opts.unixClient(opts.unixSocket)
+		client := opts.unixClient()
 		if resp, err := client.Do(req); err != nil {
 			panic(err)
 		} else {
@@ -690,7 +692,6 @@ func main() {
 	}()
 	opts := newOptions()
 	if len(os.Args) == 1 || len(os.Args[1]) == 0 || os.Args[1][0] == '-' {
-		fmt.Println("ARGS:", os.Args)
 		opts.usage(false)
 	}
 	cmd := opts.cmds[os.Args[1]]

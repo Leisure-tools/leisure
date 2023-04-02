@@ -77,7 +77,7 @@ export class Leisure {
     url.searchParams.set('doc', this.documentId)
     url.searchParams.set('org', JSON.stringify(!!org))
     let doc = await this.fetchJson('connecting', url.href)
-    console.log('GOT', doc)
+    //console.log('GOT', doc)
     if (typeof doc == 'string') {
       doc = {document: doc}
     }

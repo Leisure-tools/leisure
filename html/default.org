@@ -13,9 +13,13 @@
 <div class='leisure-block-holder'>
   <div class='leisure-source'>
     <div class='leisure-block-label'>{{#if name}}<span class='leisure-name'>{{name}}: </span>{{/if}}<b><i>{{language}}</i></b></div>
-    <div class='leisure-source-content'>{{contentStr}}</div>
+    <pre><code class='line-numbers language-{{language}}'>{{contentStr}}</code></pre>
   </div>
 </div>
+<script>
+  //debugger
+  window.Prism?.highlightAllUnder(document.currentScript.closest('[x-leisure-orgid]'))
+</script>
 #+end_src
 
 #+begin_src html :view Leisure.block
@@ -67,6 +71,14 @@
 #+end_src
 
 * Definitions
+#+begin_export html :head
+<link href="prism.css" rel="stylesheet" />
+#+end_export
+
+#+begin_export html
+<script src="prism.js"></script>
+#+end_export
+
 #+begin_src js
 import {renderText} from './orgRenderer.js'
 
@@ -78,7 +90,14 @@ Handlebars.registerHelper('hideNls', (t)=> {
     
 })
 #+end_src
-
+* Prism customizations
+#+begin_src css
+pre[class*=language-] {
+    padding-top: 0.25em;
+    padding-bottom: 0.25em;
+}
+#+end_src
+* Leisure styles
 #+begin_src css
 .leisure-view {
     display: inline-block;

@@ -7,6 +7,8 @@ const MARKUP_RE = /\[\[([^\]]*)\](?:\[([^\]]*)\])?\]|\*[^*]+\*|\/[^/]+\//;
 const VIEW_RE = /#\+begin_src +html (?:[^\n]+ )?:view +([^\n]+)(?: [^\n]+)?\n/is;
 const LEISURE_LINK_RE = /^leisure:(.*)$/i
 const HREF_LINK_RE = /^http(s)?:.*$/i
+const BLOCK_RE = /^#\+begin_([^ \n]+) *([^\n]*)\n.*#\+end_.*$/is;
+const Prism = (window as any).Prism as any;
 
 export const ORG_PARSE = VERSION + "/org/parse";
 
@@ -36,10 +38,11 @@ interface Block extends Chunk {
   content: number
   end: number
   contentStr?: string
+  options: string[]
+  blockType?: string
 }
 
 interface Source extends Block {
-  options: string[]
   value?: any
   nameStart?: number
   nameEnd?: number
@@ -87,6 +90,10 @@ export async function parseOrg(url: string) {
   return result
 }
 
+function isBlock(ch: Chunk): ch is Source {
+  return ch.type === 'block'
+}
+
 function isSource(ch: Chunk): ch is Source {
   return ch.type === 'source'
 }
@@ -96,7 +103,7 @@ export function renderText(text: string) {
   let pos = 0
   let result = ''
 
-  console.log('render:', text)
+  //console.log('render:', text)
   while (text.length) {
     const mark = text.match(MARKUP_RE)
     if (!mark) {
@@ -139,6 +146,27 @@ export function renderText(text: string) {
   return result
 }
 
+function activateAll(el: HTMLElement) {
+  if (el.closest('script')) {
+    activate(el as HTMLScriptElement)
+  }
+  for (const scr of (el.querySelectorAll('script') as any as HTMLScriptElement[])) {
+    activate(scr as HTMLScriptElement)
+  }
+}
+
+function activate(script: HTMLScriptElement) {
+  const scriptParent = script.parentNode
+  const scriptNext = script.nextSibling
+  script.remove()
+  const newScript = document.createElement('script')
+  for (const name of script.getAttributeNames()) {
+    newScript.setAttribute(name, script.getAttribute(name))
+  }
+  newScript.innerHTML = script.innerHTML
+  scriptParent.insertBefore(newScript, scriptNext)
+}
+
 export class OrgRenderer {
   dom: any
   chunks: {[id: string]: Chunk}
@@ -149,6 +177,7 @@ export class OrgRenderer {
   namedChunks: {[id: string]: string}
 
   constructor(dom:HTMLElement, templateChunks: Chunk[]) {
+    //console.log('template:', templateChunks)
     const scripts = [] as HTMLScriptElement[]
     this.dom = dom
     this.chunks = {}
@@ -165,7 +194,7 @@ export class OrgRenderer {
           const style = document.createElement('style')
           style.setAttribute('org-id', chunk.id)
           style.textContent = chunk.contentStr
-          document.body.append(style)
+          document.head.append(style)
         } else if (chunk.language === 'javascript' || chunk.language === 'js') {
           const script = document.createElement('script') as HTMLScriptElement
           script.lang = 'javascript'
@@ -173,6 +202,14 @@ export class OrgRenderer {
           script.textContent = chunk.contentStr
           script.type = 'module'
           scripts.push(script)
+        }
+      } else if (isBlock(chunk) && chunk.blockType == 'export' && chunk.options[0] == 'html') {
+        const parent = chunk.options[1] == ':head' ? document.head : document.body
+        const container = document.createElement('div') as HTMLDivElement
+        container.innerHTML = chunk.contentStr
+        for (const child of (container.children as any as HTMLElement[])) {
+          parent.appendChild(child)
+          activateAll(child)
         }
       }
     }
@@ -194,7 +231,7 @@ export class OrgRenderer {
       this.showViews()
     }
     this.clearOrphans()
-    console.log('displayed', this)
+    //console.log('displayed', this)
   }
 
   clearOrphans() {
@@ -246,7 +283,7 @@ export class OrgRenderer {
       }
     }
     this.clearOrphans()
-    console.log('updated', all, this)
+    //console.log('updated', all, this)
   }
 
   orderChunks(chunkOrder: string[], chunks: Chunk[]) {
@@ -321,6 +358,7 @@ export class OrgRenderer {
         dom.querySelector('[x-leisure-headline-content]').append(children.firstChild)
       }
     }
+    activateAll(dom)
   }
 
   showViews() {
@@ -344,8 +382,8 @@ export class OrgRenderer {
       for (const div of dom.querySelectorAll(`[x-view=${name}]`)) {
         const view = this.views[`${chunkType}/${div.getAttribute('x-namespace')}`]
 
-        console.log('view name: ', `${chunkType}/${div.getAttribute('x-namespace')}`)
-        console.log('view:', div, chunk, view)
+        //console.log('view name: ', `${chunkType}/${div.getAttribute('x-namespace')}`)
+        //console.log('view:', div, chunk, view)
         if (view) {
           div.innerHTML = view(chunk.value)
         }
@@ -384,13 +422,17 @@ export class OrgRenderer {
           this.namedChunks[src.name] = chunk.id
         }
         this.scanView(src)
+        break
       }
       case 'block': {
         const bl = chunk as Block
         const text = bl.text
         bl.raw = {start: text.slice(0, bl.content), content: text.slice(bl.content, bl.end),
                   end: text.slice(bl.end)}
-        bl.contentStr = bl.raw.content
+        bl.contentStr = bl.raw.content;
+        const [, blockType, options] = text.match(BLOCK_RE)
+        bl.blockType = blockType.toLowerCase()
+        bl.options = options.trim().split(/ +/)
         break
       }
 	  case 'drawer':
@@ -414,6 +456,7 @@ export class OrgRenderer {
     const template = this.views[`Leisure.${chunk.type}/default`]
     if (template) {
       return template(chunk)
+    //} else if (chunk.type == 'block' && ) {
     }
     return renderText(chunk.text)
   }

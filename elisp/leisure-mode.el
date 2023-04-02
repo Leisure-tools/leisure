@@ -4,7 +4,7 @@
 ;; Copyright (c) 2023 Bill Burdick and TEAM CTHULHU
 ;; Keywords: orgmode, leisure
 ;; Version: 0.1
-;; Package-Requires: ((websocket "0.0") (cl-lib "0.0"))
+;; Package-Requires: ((cl-lib "0.0"))
 ;;
 ;; The Leisure project is licensed with the MIT License:
 ;;
@@ -46,6 +46,11 @@
 (defcustom leisure-program (f-join user-emacs-directory "leisure")
   "Location of the leisure program."
   :type 'string
+  :group 'leisure)
+
+(defcustom leisure-socket (f-join "~" ".leisure.socket")
+  "Location of the leisure socket."
+  :type 'file
   :group 'leisure)
 
 (defcustom leisure-peer "emacs"
@@ -91,7 +96,8 @@
   flush-timer
   monitoring
   update-buffer
-  error-buffer)
+  error-buffer
+  socket)
 
 (defun leisure-validate-program ()
   (message "validating leisure")
@@ -101,7 +107,7 @@
         (leisure-diag 0 "Leisure program '%s' is not executable" leisure-program))
     (leisure-diag 0 "No leisure program '%s'" leisure-program)))
 
-(defun leisure-toggle-mode ()
+(defun leisure-toggle-mode (&optional path)
   (message "Toggle leisure mode to %s, leisure-info: %s" leisure-mode leisure-info)
   (if (not leisure-mode)
       (if leisure-info
@@ -112,13 +118,14 @@
           ;; Connecting will enable the mode again
           (setq leisure-mode nil)
           (if (leisure-validate-program)
-              (leisure-start))))))
+              (leisure-start path))))))
 
 (defun leisure-compute-info ()
   (let ((filename (buffer-file-name)))
     (make-leisure-data
      :monitoring t
-     :cookies (format "%s.%s.leisure" filename leisure-peer)
+     :socket leisure-socket
+     :cookies (format "%s.%s.%s.cookies" filename leisure-peer (emacs-pid))
      :session (format "%s-%d-%s" leisure-peer (emacs-pid) filename)
      :document-alias filename
      :com-buffer-name (format "*leisure-connection:%s*" filename)
@@ -136,24 +143,143 @@
                 (setq leisure-info new)
                 (f-delete (leisure-data-cookies old))))))))
 
-(defun leisure-start ()
+(defun leisure-list-docs ()
+  "get the current list of doc ids and aliases"
+  (json-parse-string(leisure-call 'doc 'list :output-string)))
+
+(defun leisure-output-pos (&rest args)
+  (if (integerp (car args)) 5 3))
+
+(defun leisure-replace-arg (newArg n args)
+  `(,@(seq-take args (1- n)) ,newArg ,@(seq-drop args n)))
+
+(defun leisure-call (&rest args)
+  (let* ((args (apply 'leisure-args args))
+         (output-string (eq (car args) 'output-string)))
+    (when output-string
+      (setq args (cdr args)))
+    (let ((process-func
+           (if (integerp (car args))
+               'call-process-region
+             'call-process)))
+      (if output-string
+          (with-output-to-string
+            (let* ((output-pos (leisure-output-pos args))
+                   (output (if (listp (nth output-pos args))
+                               (list standard-output (cdr (nth output-pos args)))
+                             standard-output)))
+              (apply process-func (leisure-replace-arg output output-pos args))))
+              ;;(list 'apply process-func (leisure-replace-arg output output-pos args))))
+        (apply process-func args)))))
+        ;;(list 'apply process-func args)))))
+
+(defun leisure-as-string (s)
+  (if (symbolp s)
+      (symbol-name s)
+    s))
+
+(defun leisure-as-file (s)
+  "try to treat s as a file"
+  (cond ((stringp s)
+         (f-expand s))
+        ((symbolp s)
+         (f-expand (leisure-as-string s)))
+        (t s)))
+
+(defun leisure-args (&rest args)
+  "Run a leisure command"
+  (let ((tmp-args args)
+        socket
+        cookies
+        input
+        output
+        output-string
+        errors
+        display
+        (program leisure-program)
+        (final-args (dl)))
+    (while tmp-args
+      (let ((first (car tmp-args))
+            (rest (cdr tmp-args)))
+        (cl-flet ((shift (lambda (transform)
+                           (let ((next (car rest)))
+                             (setq rest (cdr rest))
+                             (funcall transform next)))))
+          (cond ((memq first '(socket :socket :unixsocket unixsocket "-unixsocket"))
+                 (setq socket (shift 'leisure-as-file)))
+                ((memq first '(:cookies cookies "-cookies"))
+                 (setq cookies 'identity))
+                ((memq first '(:input input))
+                 (setq input 'leisure-as-file))
+                ((memq first '(:output output))
+                 (setq output 'leisure-as-file))
+                ((memq first '(:output-string output-string))
+                 (setq output-string t))
+                ((memq first '(:errors errors))
+                 (setq errors 'leisure-as-file))
+                ((memq first '(:display display))
+                 (setq display 'identity))
+                ((memq first '(:program program))
+                 (setq program 'leisure-as-file))
+                ((and (symbolp first) (s-starts-with? ":" (symbol-name first)))
+                 (error "Unknown %s is not one of :program, :unixsocket, :cookies" first))
+                (t
+                 (setq final-args (dl/append final-args
+                                             (dl (if (and first (symbolp first))
+                                                     (symbol-name first)
+                                                   first)))))))
+        (setq tmp-args rest)))
+    (when (eq socket t) (setq socket (leisure-socket)))
+    (when (eq cookies t) (setq cookies (leisure-cookies)))
+    `(,@(if output-string
+           (list 'output-string)
+         nil)
+      ,@(list program input output display)
+      ,@(dl/resolve final-args)
+      ,@(if socket (list "-unixsocket" socket) ())
+      ,@(if cookies (list "-cookies" cookies) ()))
+    ))
+
+(defun leisure-choose-doc ()
+  (let ((items (cl-loop for pair across (leisure-list-docs) collect
+            (cons (format "%s: %s" (elt pair 0) (elt pair 1)) pair))))
+    (cdr (assoc (completing-read "doc: " items) items))))
+
+(defun leisure-connect ()
+  "Connect to leisure"
+  (interactive)
+  (let* ((doc-id (leisure-choose-doc))
+         (file (make-temp-file "leisure-"))
+         (buf (find-file file)))
+    (with-current-buffer buf
+      (leisure-start t (elt doc-id 0) (elt doc-id 1)))))
+
+(defun leisure-start (&optional connecting docid alias)
   (message "Starting leisure...")
   (make-local-variable 'leisure-info)
   (setq leisure-info (leisure-compute-info))
+  (when alias (setf (leisure-data-document-alias leisure-info) alias))
   (leisure-diag 1 "Connecting...")
   (let* ((cookies (leisure-data-cookies leisure-info))
          (connect (leisure-call-program-filter
                    (buffer-string)                      ; input
                    'leisure-parse                       ; filter
                    "session" "connect"
-                   "-cookies" (leisure-cookies)
+                   "-unixsocket" leisure-socket
+                   "-cookies" cookies
                    "-lock"
-                   "-doc" (leisure-full-path)           ; alias
+                   "-force"
+                   "-doc" (or docid (leisure-full-path))     ; alias
                    (format "%s-%d" leisure-peer (emacs-pid)) ; peer name
                    )))
-    (leisure-diag 1 "Connected")
+    ;(if connect
+    (leisure-diag 1 "Connected, result: %s" connect)
     (if (eql 0 (car connect))
-        (leisure-add-change-hooks)
+        (progn
+          (when connecting
+            (insert (cdr connect))
+            (set-buffer-modified-p nil))
+          (leisure-add-change-hooks))
       (setq leisure-mode t)))
   (leisure-update))
 
@@ -270,7 +396,7 @@
       (goto-char 0)
       (leisure-diag 1 "Got response for %s:\n%s" original-args (buffer-string))
       (if (not (eql 0 status)) (leisure-diag 0 "LEISURE ERROR: %d\n  %s" status tmp))
-      (cons status (apply filter status tmp ())))))
+      (cons status (apply (or filter 'leisure-no-parse) status tmp ())))))
 
 (defun leisure-full-path ()
   (f-canonical (buffer-file-name)))
@@ -378,7 +504,7 @@
                 (leisure-replacements (cdr result)))))
         (leisure-update))))
 
-(defun leisure-cookies () (format "%s.cookies" leisure-peer))
+(defun leisure-cookies () (leisure-data-cookies leisure-info))
 
 (defun leisure-replacements (repls)
   (if repls
