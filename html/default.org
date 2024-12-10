@@ -1,7 +1,7 @@
 * Templates
 
 #+begin_src html :view Leisure.headline
-<div class='{{hlClass}}'>{{{renderText contentStr}}}</div>
+<div class='{{hlClass}}' data-hidden={{hidden}}>{{{renderText contentStr}}}</div>
 <div class='leisure-headline-content' x-leisure-headline-content='true'></div>
 #+end_src
 
@@ -43,9 +43,9 @@
 #+begin_src html :view Leisure.drawer
 <div class='leisure-block-holder'>
   <div class='leisure-block'>
-    <div class='leisure-block-label'>{{begin}}</div>
+    <div class='leisure-block-label'>{{raw.begin}}</div>
     <div class='leisure-block-content'>{{contentStr}}</div>
-    <div class='leisure-block-label'>{{end}}</div>
+    <div class='leisure-block-endlabel'>{{raw.end}}</div>
   </div>
 </div>
 #+end_src
@@ -79,17 +79,6 @@
 <script src="prism.js"></script>
 #+end_export
 
-#+begin_src js
-import {renderText} from './orgRenderer.js'
-
-// render org text
-Handlebars.registerHelper('renderText', renderText)
-
-// hide single newlines, hide first newline of double newlines
-Handlebars.registerHelper('hideNls', (t)=> {
-    
-})
-#+end_src
 * Prism customizations
 #+begin_src css
 pre[class*=language-] {
@@ -97,6 +86,7 @@ pre[class*=language-] {
     padding-bottom: 0.25em;
 }
 #+end_src
+
 * Leisure styles
 #+begin_src css
 .leisure-view {
@@ -111,12 +101,21 @@ pre[class*=language-] {
     display: inline-block;
 }
 
-.leisure-block-label {
+.leisure-block-label,
+.leisure-block-endlabel {
     background: lightgray;
-    border-top-left-radius: 8px;
-    border-top-right-radius: 8px;
     padding-left: 1ex;
     padding-right: 1ex;
+}
+
+.leisure-block-label {
+    border-top-left-radius: 8px;
+    border-top-right-radius: 8px;
+}
+
+.leisure-block-endlabel {
+    border-bottom-left-radius: 8px;
+    border-bottom-right-radius: 8px;
 }
 
 .leisure-block-content,
@@ -126,6 +125,14 @@ pre[class*=language-] {
     margin-left: 1ex;
     margin-right: 1ex;
     white-space: pre-line;
+}
+
+body:not(.show-hidden) [x-leisure-type=headline] > [data-hidden=true] {
+    display: none;
+}
+
+body:not(.show-hidden) [x-leisure-type=headline] > [data-hidden=true] + * {
+    display: none;
 }
 
 .leisure-source,

@@ -6,9 +6,11 @@ const SESSION_CLOSE = VERSION + "/session/close";
 const SESSION_CONNECT = VERSION + "/session/connect/";
 const SESSION_CREATE = VERSION + "/session/create/";
 const SESSION_LIST = VERSION + "/session/list";
-const SESSION_GET = VERSION + "/session/document";
-const SESSION_EDIT = VERSION + "/session/edit";
+const SESSION_DOC = VERSION + "/session/document";
 const SESSION_UPDATE = VERSION + "/session/update";
+const SESSION_EDIT = VERSION + "/session/edit";
+const SESSION_GET = VERSION + "/session/get";
+const SESSION_SET = VERSION + "/session/set";
 
 export interface Replacement {
   offset: number
@@ -43,7 +45,7 @@ export class Leisure {
   documentId: string
   updateGenerator: UpdateGenerator
   updateHandler: UpdateHandler
-  updating = false
+  updating: false
 
   constructor(server:string, sessionName: string, documentId: string) {
     this.server = new URL(server).href
@@ -99,6 +101,23 @@ export class Leisure {
         'content-type': 'application/json;charset=UTF-8',
       },
       body: JSON.stringify(e),
+    }))
+    return this.protect(`getting json from edit response`, async ()=>
+      this.checkError(await response.json()) as Edit)
+  }
+
+  async get(name: string) {
+    return this.fetchJson(`getting data "${name}"`, new URL(`${SESSION_GET}/${name}`, this.server).href)
+  }
+
+  async set(name: string, value: any) {
+    const url = new URL(`${SESSION_SET}/${name}`, this.server)
+    const response = await this.protect(`setting data "${name}"`, async ()=> fetch(url.href, {
+      method: 'POST',
+      headers: {
+        'content-type': 'application/json;charset=UTF-8',
+      },
+      body: JSON.stringify(value),
     }))
     return this.protect(`getting json from edit response`, async ()=>
       this.checkError(await response.json()) as Edit)

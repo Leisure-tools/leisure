@@ -1,15 +1,13 @@
 {
   "compilerOptions": {
-    "target": "esnext",
-    "lib": [
-      "esnext",
-      "dom"
-    ],
-    "sourceMap": true
+    "target": "ES2021",
+    "lib": ["ES2021", "dom"],
+    "sourceMap": true,
+    "plugins": [
+      {
+        "name": "typescript-eslint-language-service"
+      }
+    ]
   },
-  "files": [
-    "main.ts",
-    "leisure.ts",
-    "orgRenderer.ts"
-  ]
+  "files": ["main.ts", "leisure.ts", "orgRenderer.ts"]
 }

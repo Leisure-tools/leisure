@@ -436,8 +436,6 @@
       (cl-incf pos 2))
     result))
 
-(defun leisure-update ())
-
 (defun leisure-update ()
   (if leisure-info
       (let ((buf (current-buffer)))

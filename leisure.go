@@ -7,7 +7,6 @@ import (
 	"embed"
 	"encoding/hex"
 	"encoding/json"
-	"flag"
 	"fmt"
 	"io"
 	"io/fs"
@@ -16,22 +15,21 @@ import (
 	"net/http"
 	"net/url"
 	"os"
-	"os/signal"
 	"os/user"
 	"path"
 	"path/filepath"
-	"runtime/debug"
-	"sort"
 	"strconv"
 	"strings"
 	"time"
 
 	"github.com/aki237/nscjar"
+	"github.com/alecthomas/kong"
 	"github.com/leisure-tools/server"
 )
 
 const (
 	DEFAULT_UNIX_SOCKET = ".leisure.socket"
+	DEFAULT_PORT        = 7315
 	FILES_PATH          = "/files/"
 )
 
@@ -50,60 +48,6 @@ var die = func() {
 //go:embed html/*
 var html embed.FS
 
-func (opts *options) usage(err bool) {
-	cmds := make([]string, 0, len(opts.cmds))
-	for key := range opts.cmds {
-		cmds = append(cmds, key)
-	}
-	sort.Strings(cmds)
-	fmt.Fprint(os.Stderr, `Usage: leisure COMMAND OPTIONS
-
-COMMANDS:
-
-`)
-	for _, cmd := range cmds {
-		opts.cmds[cmd].baseUsage("")
-	}
-	if err {
-		os.Exit(1)
-	}
-	os.Exit(0)
-}
-
-type options struct {
-	cmds           commands
-	globalFlags    *flag.FlagSet
-	host           string
-	unixSocket     string
-	cookieFile     string
-	tcpPort        int
-	docId          string
-	docAlias       string
-	docHash        string
-	lockCookies    bool
-	forceLock      bool
-	force          bool
-	ppid           int
-	verbosity      verboser
-	wantsOrg       bool
-	wantsNoStrings bool
-	dataOnly       bool
-	localFiles     string
-	ofs            *Overlay
-}
-
-type verboser struct{ level int }
-
-type command struct {
-	fn             commandFunc
-	leaf           bool
-	flags          *flag.FlagSet
-	name           []string
-	description    string
-	argDescription string
-	session        bool
-}
-
 type Overlay struct {
 	stack []fs.FS
 }
@@ -118,161 +62,37 @@ func (ofs *Overlay) Open(name string) (file fs.File, err error) {
 	return
 }
 
-type commandFunc = func(cmd *command, opts *options, args []string)
-
-type commands map[string]*command
-
-var htmlDirs = make([]fs.FS, 0, 4)
-
-func (opts *options) addGlobalOpts(fl *flag.FlagSet) {
-	home, err := os.UserHomeDir()
-	if err != nil {
-		panic("Could not get home directory")
+func (ofs *Overlay) Add(name string) error {
+	if info, err := os.Stat(name); err != nil {
+		if os.IsNotExist(err) {
+			panic("File " + name + " does not exist")
+		}
+		panic("Could not open dirctory " + name)
+	} else if !info.IsDir() {
+		panic("Not a dirctory: " + name)
 	}
-	fl.StringVar(&opts.unixSocket, "unixsocket", path.Join(home, DEFAULT_UNIX_SOCKET), "`PATH` to unix socket -- PATH will be created and must not exist beforehand")
-	fl.Var(&opts.verbosity, "v", "verbose")
-}
-
-func (v *verboser) String() string { return "" }
-
-func (v *verboser) Set(value string) error {
-	v.level++
+	ofs.stack = append(ofs.stack, os.DirFS(name))
 	return nil
 }
 
-func (v *verboser) IsBoolFlag() bool { return true }
+var htmlDirs = make([]fs.FS, 0, 4)
 
-func (opts *options) verbose(level int, format string, args ...any) {
-	if level <= opts.verbosity.level {
-		fmt.Fprintf(os.Stderr, format, args...)
+func (cli *CLI) verbose(level int, format string, args ...any) {
+	if level <= cli.globals.Verbose {
+		fmt.Fprintf(os.Stderr, format+"\n", args...)
 	}
-}
-
-func (opts *options) initCommands() {
-	cmd := opts.add("peer", (*command).peer, "", "Run a leisure peer on unix domain socket PATH and, optionally, on a TCP port.")
-	cmd.flags.StringVar(&opts.localFiles, "html", "", "`DIRECTORY` to serve files from")
-	cmd.flags.IntVar(&opts.tcpPort, "l", -1, "TCP `PORT` to listen on")
-	cmd = opts.add("doc list", (*command).docList, "", "List all documents.")
-	cmd = opts.add("doc create", (*command).docCreate, "", "Create a document.")
-	cmd.flags.StringVar(&opts.docId, "id", "", "`ID` of document")
-	cmd.flags.StringVar(&opts.docAlias, "alias", "", "`ALIAS` for document")
-	cmd = opts.add("doc get", (*command).docGet, "DOCID | ALIAS", "Get a document.")
-	cmd.flags.StringVar(&opts.docHash, "hash", "", "`HASH` for document")
-	cmd = opts.add("session list", (*command).sessionList, "", "List all sessions.")
-	cmd = opts.addSession("create", (*command).sessionCreate, "SESSIONID DOCID | ALIAS", "Create a session.")
-	cmd.flags.BoolVar(&opts.wantsOrg, "org", false, "receive org changes")
-	cmd.flags.BoolVar(&opts.wantsNoStrings, "nostrings", false, "receive org changes")
-	cmd.flags.BoolVar(&opts.dataOnly, "data", false, "receive only data changes")
-	cmd = opts.addSession("doc", (*command).sessionDoc, "", "Get a session's document.")
-	cmd = opts.addSession("get", (*command).sessionGet, "", "Get data.")
-	cmd = opts.addSession("set", (*command).sessionSet, "", "Set data.")
-	cmd = opts.addSession("connect", (*command).sessionConnect, "SESSIONID", "Connect to a session.")
-	cmd.flags.StringVar(&opts.docId, "doc", "", "`ID or ALIA` of document")
-	cmd.flags.BoolVar(&opts.wantsOrg, "org", false, "receive org changes")
-	cmd.flags.BoolVar(&opts.wantsNoStrings, "nostrings", false, "receive org changes")
-	cmd.flags.BoolVar(&opts.dataOnly, "data", false, "receive only data changes")
-	cmd.flags.BoolVar(&opts.force, "force", false, "force connection, even if session is in use")
-	cmd = opts.addSession("edit", (*command).sessionEdit, "", "Add edits to a session.")
-	cmd = opts.addSession("update", (*command).sessionUpdate, "", "Check if a session has updates.")
-	cmd = opts.addSession("unlock", (*command).sessionUnlock, "", "Unlock session.")
-	cmd = opts.add("parse", (*command).parse, "", "parse an org document. Example: leisure get /default.org | leisure parse.")
-	cmd = opts.add("get", (*command).get, "", "HTTP get request to leisure server.")
 }
 
 func concat[T any](array []T, values ...T) []T {
 	return append(append(make([]T, 0, len(array)+len(values)), array...), values...)
 }
 
-func (opts *options) add(cmdName string, fn commandFunc, args, description string) *command {
-	prefix := strings.Split(cmdName, " ")
-	cmds := make([]command, len(prefix))
-	for i := range prefix {
-		cmd := &cmds[i]
-		cmd.flags = &flag.FlagSet{}
-		cmd.name = prefix[:i+1]
-		opts.cmds[strings.Join(cmd.name, " ")] = cmd
-		if i == len(prefix)-1 {
-			cmd.fn = fn
-			cmd.leaf = true
-			cmd.description = description
-			cmd.argDescription = args
-			opts.addGlobalOpts(cmd.flags)
-		} else {
-			keyPrefix := strings.Join(cmd.name, " ") + " "
-			cmd.fn = func(cmd *command, opts *options, args []string) {
-				if len(args) == 0 {
-					cmds[0].commandSetUsage(opts)
-				}
-				if cmd := opts.cmds[keyPrefix+args[0]]; cmd == nil {
-					panicWith("%w: unrecognized command: %s", ErrBadCommand, os.Args[1])
-				} else {
-					cmd.call(opts, args[1:])
-				}
-			}
-		}
-	}
-	return &cmds[len(cmds)-1]
-}
-
-// create a session command and add the -cookies opt to it
-func (opts *options) addSession(cmdName string, fn commandFunc, args, description string) *command {
-	cmd := opts.add("session "+cmdName, fn, args, description)
-	cmd.session = true
-	cmd.flags.StringVar(&opts.cookieFile, "cookies", "", "`PATH` to cookies file")
-	cmd.flags.BoolVar(&opts.lockCookies, "lock", false, "lock the cookies file")
-	cmd.flags.BoolVar(&opts.forceLock, "forcelock", false, "lock the cookies file, removing other locks")
-	cmd.flags.IntVar(&opts.ppid, "parent", 0, "process using leisure, in case the parent is not the real owner")
-	return cmd
-}
-
-func newOptions() *options {
-	html, err := fs.Sub(html, "html")
-	if err != nil {
-		panic(err)
-	}
-	opts := &options{
-		host: "http://leisure", // assume unix socket
-		cmds: commands{},
-		ofs:  &Overlay{append(make([]fs.FS, 0, 2), html)},
-	}
-	opts.initCommands()
-	return opts
-}
-
-func (cmd *command) commandSetUsage(opts *options) {
-	fmt.Fprintf(os.Stderr, "Usage: %s SUBCOMMAND OPTIONS\n", cmd.name[0])
-	names := make([]string, 0, len(opts.cmds))
-	prefix := cmd.name[0] + " "
-	for name := range opts.cmds {
-		if strings.HasPrefix(name, prefix) {
-			names = append(names, name)
-		}
-	}
-	sort.Strings(names)
-	for _, name := range names {
-		opts.cmds[name].baseUsage("")
-	}
-	os.Exit(1)
-}
-
-func (cmd *command) usage() {
-	cmd.baseUsage("Usage: ")
-	os.Exit(1)
-}
-
-func (cmd *command) baseUsage(prefix string) {
-	if cmd.leaf {
-		fmt.Fprintf(os.Stderr, "%s%s %s  -- %s\n\n", prefix, strings.Join(cmd.name, " "), cmd.argDescription, cmd.description)
-		cmd.flags.PrintDefaults()
-		fmt.Fprintln(os.Stderr)
-	}
-}
-
-func (opts *options) lockName() string {
-	if cookieFile, err := filepath.Abs(opts.cookieFile); err != nil {
+func (cli *CLI) lockName() string {
+	cli.verbose(1, "LOCK, COOKIES: %s", cli.globals.Cookies)
+	if cookieFile, err := filepath.Abs(cli.globals.Cookies); err != nil {
 		panic(err)
 	} else {
-		if real, err := filepath.EvalSymlinks(opts.cookieFile); err == nil {
+		if real, err := filepath.EvalSymlinks(cli.globals.Cookies); err == nil {
 			cookieFile = real
 		}
 		parent, name := path.Split(cookieFile)
@@ -285,9 +105,9 @@ func eatTo(str, delim string) (string, string) {
 	return str[:d], str[d+1:]
 }
 
-func (opts *options) checkLock(lockName string) (bool, string, int) {
-	if opts.ppid == 0 {
-		opts.ppid = os.Getppid()
+func (cli *CLI) checkLock(lockName string) (bool, string, int) {
+	if cli.globals.Parent == 0 {
+		cli.globals.Parent = os.Getppid()
 	}
 	if userObj, err := user.Current(); err != nil {
 		panicWith("%w: %s", ErrLocking, err)
@@ -300,7 +120,7 @@ func (opts *options) checkLock(lockName string) (bool, string, int) {
 				panicWith("%w: %s", ErrLocking, err)
 			}
 			// doesn't exist
-			if !opts.lockCookies {
+			if !cli.globals.Lock {
 				return true, "", 0
 			}
 			//fall through to creating the link
@@ -314,16 +134,16 @@ func (opts *options) checkLock(lockName string) (bool, string, int) {
 			lpidStr, dest := eatTo(dest, ":")
 			if lpid, err := strconv.Atoi(lpidStr); err != nil {
 				panicWith("%w: %s", ErrLocking, err)
-			} else if userObj.Username == luser && hostname == lhost && opts.ppid == lpid {
+			} else if userObj.Username == luser && hostname == lhost && cli.globals.Parent == lpid {
 				// it's our file
 				return true, "", 0
-			} else if !opts.forceLock {
+			} else if !cli.globals.ForceLock {
 				// it's not our file and we're not forcing the lock
 				return false, luser, lpid
 			}
 		}
 		// create the lock file, smashing over the old one if it exists
-		target := fmt.Sprintf("%s@%s.%d:%d", userObj.Username, hostname, opts.ppid, time.Now().Unix())
+		target := fmt.Sprintf("%s@%s.%d:%d", userObj.Username, hostname, cli.globals.Parent, time.Now().Unix())
 		parent := path.Dir(lockName)
 		for i := 0; i < 5; i++ {
 			buf := make([]byte, 8)
@@ -344,56 +164,39 @@ func (opts *options) checkLock(lockName string) (bool, string, int) {
 	return false, "", 0
 }
 
-func (cmd *command) call(opts *options, args []string) {
-	a := make([]string, 0, len(args))
-	if cmd.leaf {
-		for _, arg := range args {
-			if len(arg) > 0 && arg[0] == '-' {
-				break
-			}
-			a = append(a, arg)
+type Cmd interface {
+	run(globals *GlobalOpts)
+}
+
+func (cli *CLI) check() {
+	if cli.globals.Cookies != "" {
+		cli.verbose(1, "Using cookie file %s", cli.globals.Cookies)
+		if cli.globals.ForceLock {
+			cli.globals.Lock = true
 		}
-		args = args[len(a):]
-	}
-	if err := cmd.flags.Parse(args); err != nil {
-		fmt.Fprintln(os.Stderr, "ERROR:", err)
-		cmd.usage()
-	}
-	if cmd.session && opts.cookieFile != "" {
-		opts.verbose(1, "Using cookie file %s\n", opts.cookieFile)
-		if opts.forceLock {
-			opts.lockCookies = true
-		}
-		owned, user, pid := opts.checkLock(opts.lockName())
-		if !owned && opts.lockCookies {
+		owned, user, pid := cli.checkLock(cli.lockName())
+		if !owned && cli.globals.Lock {
 			e := server.NewLeisureError(ErrLocked.Type, "user", user, "pid", pid)
-			panicWith("%w: the cookies file %s is already locked by user %s, process %d", e, opts.cookieFile, user, pid)
+			panicWith("%w: the cookies file %s is already locked by user %s, process %d", e, cli.globals.Cookies, user, pid)
 		}
 	}
-	cmd.fn(cmd, opts, append(a, cmd.flags.Args()...))
 }
 
-func (cmd *command) argCount(count int, args []string) {
-	if len(args) != count {
-		cmd.usage()
-	}
-}
-
-func (cmd *command) file(opts *options, args []string) {
-}
-
-func (cmd *command) peer(opts *options, args []string) {
-	if len(args) > 0 {
-		opts.unixSocket = args[0]
+func (cmd *PeerCmd) Run(cli *CLI) error {
+	cli.verbose(1, "PEER")
+	if html, err := fs.Sub(html, "html"); err != nil {
+		panic(err)
+	} else {
+		cmd.ofs = &Overlay{append(make([]fs.FS, 0, 2), html)}
 	}
 	mux := http.NewServeMux()
-	sv := server.Initialize(opts.unixSocket, mux, server.MemoryStorage)
-	if opts.localFiles != "" {
-		opts.ofs.stack = append(opts.ofs.stack, os.DirFS(opts.localFiles))
-	}
-	mux.Handle("/", http.FileServer(http.FS(opts.ofs)))
-	sv.SetVerbose(opts.verbosity.level)
-	fmt.Fprintln(os.Stderr, "Leisure", strings.Join(args, " "))
+	sv := server.Initialize(cmd.UnixSocket, mux, server.MemoryStorage)
+	//if opts.localFiles != "" {
+	//	opts.ofs.Add(opts.localFiles)
+	//}
+	mux.Handle("/", http.FileServer(http.FS(cmd.ofs)))
+	sv.SetVerbose(cmd.Verbose)
+	//fmt.Fprintln(os.Stderr, "Leisure", strings.Join(args, " "))
 	var listener *net.UnixListener
 	die = func() {
 		if listener != nil {
@@ -401,18 +204,20 @@ func (cmd *command) peer(opts *options, args []string) {
 		}
 		os.Exit(exitCode)
 	}
-	if opts.tcpPort != -1 {
-		go http.ListenAndServe(fmt.Sprintf("localhost:%d", opts.tcpPort), mux)
+	if cmd.Port != 0 {
+		go http.ListenAndServe(fmt.Sprintf("localhost:%d", cmd.Port), mux)
 	}
-	if addr, err := net.ResolveUnixAddr("unix", opts.unixSocket); err != nil {
-		panicWith("%w: could not resolve unix socket %s", ErrSocketFailure, opts.unixSocket)
+	cli.verbose(1, "UNIX SOCKET: %s", cmd.UnixSocket)
+	if addr, err := net.ResolveUnixAddr("unix", cmd.UnixSocket); err != nil {
+		panicWith("%w: could not resolve unix socket %s", ErrSocketFailure, cmd.UnixSocket)
 	} else if listener, err = net.ListenUnix("unix", addr); err != nil {
-		panicWith("%w: could not listen on unix socket %s", ErrSocketFailure, opts.unixSocket)
+		panicWith("%w: could not listen on unix socket %s", ErrSocketFailure, cmd.UnixSocket)
 	} else {
 		listener.SetUnlinkOnClose(true)
-		fmt.Fprintf(os.Stderr, "RUNNING UNIX DOMAIN SERVER: %+v\n", addr)
+		cli.verbose(1, "RUNNING UNIX DOMAIN SERVER: %s", addr)
 		log.Fatal(http.Serve(listener, &myMux{mux}))
 	}
+	return nil
 }
 
 type myMux struct {
@@ -426,24 +231,43 @@ func (mux *myMux) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	mux.ServeMux.ServeHTTP(w, r)
 }
 
-func (opts *options) unixClient() *http.Client {
+func (cli *CLI) httpClient() *http.Client {
+	if cli.globals.Host != "" {
+		cli.verbose(1, "USING HOST: %s:%i", cli.globals.Host, cli.globals.Port)
+		return &http.Client{
+			Transport: &http.Transport{
+				DialContext: func(_ context.Context, _, _ string) (net.Conn, error) {
+					return net.Dial("tcp", fmt.Sprint(cli.globals.Host, ":", cli.globals.Port))
+				},
+			},
+		}
+	}
+	cli.verbose(1, "USING UNIX SOCKET: '%s'", cli.globals.UnixSocket)
 	return &http.Client{
 		Transport: &http.Transport{
 			DialContext: func(_ context.Context, _, _ string) (net.Conn, error) {
-				return net.Dial("unix", opts.unixSocket)
+				return net.Dial("unix", cli.globals.UnixSocket)
 			},
 		},
 	}
 }
 
-func (opts *options) request(method string, body io.Reader, urlStr string, moreUrl ...string) *http.Response {
+func (cli *CLI) request(method string, body io.Reader, urlStr string, moreUrl ...string) *http.Response {
 	for i, str := range moreUrl {
 		moreUrl[i] = url.PathEscape(str)
 	}
+	hostname := cli.globals.Host
+	if hostname == "" {
+		hostname = "leisure"
+	}
+	if cli.globals.Port != 0 {
+		hostname += fmt.Sprint(":", cli.globals.Port)
+	}
+	uri := fmt.Sprint("http://", hostname)
 	if path, err := url.JoinPath(urlStr, moreUrl...); err != nil {
-		opts.usage(true)
+		cli.globals.ctx.PrintUsage(true)
 		return nil
-	} else if req, err := http.NewRequest(method, opts.host+path, body); err != nil {
+	} else if req, err := http.NewRequest(method, uri+path, body); err != nil {
 		panic(err)
 	} else {
 		req.URL = &url.URL{
@@ -451,15 +275,16 @@ func (opts *options) request(method string, body io.Reader, urlStr string, moreU
 			Host:   req.URL.Host,
 			Opaque: path,
 		}
-		opts.verbose(1, "%s %s\n", method, req.URL.String())
+		cli.verbose(1, "%s %s", method, req.URL.String())
 		if body != nil {
 			req.Header.Set("Content-Type", "text/plain")
 		}
-		if opts.cookieFile != "" {
+		cli.verbose(1, "Cookies: %s", cli.globals.Cookies)
+		if cli.globals.Cookies != "" {
 			jar := nscjar.Parser{}
-			if file, err := os.Open(opts.cookieFile); err == nil {
+			if file, err := os.Open(cli.globals.Cookies); err == nil {
 				if cookies, err := jar.Unmarshal(file); err != nil {
-					panicWith("%w: could not read cookie file %s", ErrCookieFailure, opts.cookieFile)
+					panicWith("%w: could not read cookie file %s", ErrCookieFailure, cli.globals.Cookies)
 				} else {
 					for _, cookie := range cookies {
 						req.AddCookie(cookie)
@@ -467,19 +292,19 @@ func (opts *options) request(method string, body io.Reader, urlStr string, moreU
 				}
 			}
 		}
-		client := opts.unixClient()
+		client := cli.httpClient()
 		if resp, err := client.Do(req); err != nil {
 			panic(err)
 		} else {
-			if resp.StatusCode == http.StatusOK && opts.cookieFile != "" {
+			if resp.StatusCode == http.StatusOK && cli.globals.Cookies != "" {
 				jar := nscjar.Parser{}
-				if file, err := os.Create(opts.cookieFile); err != nil {
-					panicWith("%w: could not write cookie file %s", ErrCookieFailure, opts.cookieFile)
+				if file, err := os.Create(cli.globals.Cookies); err != nil {
+					panicWith("%w: could not write cookie file %s", ErrCookieFailure, cli.globals.Cookies)
 				} else {
-					opts.verbose(1, "Cookies:%v\n", resp.Cookies())
+					cli.verbose(1, "Cookies:%v", resp.Cookies())
 					for _, cookie := range resp.Cookies() {
 						if err := jar.Marshal(file, cookie); err != nil {
-							panicWith("%w: could not write cookie file %s", ErrCookieFailure, opts.cookieFile)
+							panicWith("%w: could not write cookie file %s", ErrCookieFailure, cli.globals.Cookies)
 						}
 					}
 				}
@@ -489,22 +314,22 @@ func (opts *options) request(method string, body io.Reader, urlStr string, moreU
 	}
 }
 
-func (opts *options) get(url string, components ...string) *http.Response {
-	return opts.request("GET", nil, url, components...)
+func (cli *CLI) get(url string, components ...string) *http.Response {
+	return cli.request("GET", nil, url, components...)
 }
 
-func (opts *options) post(url string, body io.Reader) *http.Response {
-	return opts.request("POST", body, url)
+func (cli *CLI) post(url string, body io.Reader) *http.Response {
+	return cli.request("POST", body, url)
 }
 
-func (opts *options) postOrGet(url string) *http.Response {
+func (cli *CLI) postOrGet(url string) *http.Response {
 	if body, err := io.ReadAll(os.Stdin); err != nil {
 		panicWith("%w: error reading input", ErrBadCommand)
 		return nil
 	} else if len(body) > 0 {
-		return opts.post(url, bytes.NewReader(body))
+		return cli.post(url, bytes.NewReader(body))
 	} else {
-		return opts.get(url)
+		return cli.get(url)
 	}
 }
 
@@ -548,40 +373,40 @@ func outputBasic(resp *http.Response, parseJson bool) {
 	fmt.Print(obj)
 }
 
-func (cmd *command) docCreate(opts *options, args []string) {
-	if opts.docId == "" {
+func (cmd *DocCreateCmd) Run(cli *CLI) error {
+	if cmd.DocId == "" {
 		key := make([]byte, 16)
 		rand.Read(key)
-		opts.docId = hex.EncodeToString(key)
+		cmd.DocId = hex.EncodeToString(key)
 	}
-	url := server.DOC_CREATE + opts.docId
-	if opts.docAlias != "" {
-		url += "?alias=" + opts.docAlias
+	url := server.DOC_CREATE + cmd.DocId
+	if cmd.Alias != "" {
+		url += "?alias=" + cmd.Alias
 	}
-	opts.post(url, os.Stdin)
+	cli.post(url, os.Stdin)
+	return nil
 }
 
-func (cmd *command) docList(opts *options, args []string) {
-	cmd.argCount(0, args)
-	output(opts.get(server.DOC_LIST))
+func (cmd *DocListCmd) Run(cli *CLI) error {
+	output(cli.get(server.DOC_LIST))
+	return nil
 }
 
-func (cmd *command) docGet(opts *options, args []string) {
-	cmd.argCount(1, args)
-	if opts.docHash != "" {
-		outputBasic(opts.get(server.DOC_GET, args[0], "?", "hash", opts.docHash), true)
-		return
+func (cmd *DocGetCmd) Run(cli *CLI) error {
+	if cmd.Hash != "" {
+		outputBasic(cli.get(server.DOC_GET, cmd.DocId, "?", "hash", cmd.Hash), true)
+		return nil
 	}
-	outputBasic(opts.get(server.DOC_GET, args[0]), true)
+	outputBasic(cli.get(server.DOC_GET, cmd.DocId), true)
+	return nil
 }
 
-func (cmd *command) sessionUnlock(opts *options, args []string) {
-	cmd.argCount(0, args)
+func (cmd *SessionUnlockCmd) Run(cli *CLI) error {
 	result := false
-	if opts.cookieFile != "" {
-		name := opts.lockName()
-		owner, user, pid := opts.checkLock(name)
-		if !owner && !opts.forceLock {
+	if cli.globals.Cookies != "" {
+		name := cli.lockName()
+		owner, user, pid := cli.checkLock(name)
+		if !owner && !cli.globals.ForceLock {
 			panicWith("%w: lock file is owned by user %s, pid %d",
 				server.NewLeisureError(ErrUnlocking.Type, "filename", name), user, pid)
 		} else if _, err := os.Lstat(name); err != nil {
@@ -594,109 +419,116 @@ func (cmd *command) sessionUnlock(opts *options, args []string) {
 		result = true
 	}
 	fmt.Println(result)
+	return nil
 }
 
-func (cmd *command) sessionCreate(opts *options, args []string) {
-	cmd.argCount(2, args)
-	output(opts.get(server.SESSION_CREATE, args[0], args[1]))
-}
-
-func (cmd *command) sessionList(opts *options, args []string) {
-	cmd.argCount(0, args)
-	output(opts.get(server.SESSION_LIST))
-}
-
-func (cmd *command) sessionDoc(opts *options, args []string) {
-	cmd.argCount(0, args)
-	output(opts.get(server.SESSION_DOCUMENT))
-}
-
-func (cmd *command) sessionGet(opts *options, args []string) {
-	cmd.argCount(1, args)
-	output(opts.get(server.SESSION_GET, args[0]))
-}
-
-func (cmd *command) sessionSet(opts *options, args []string) {
-	cmd.argCount(1, args)
-	if url, err := url.JoinPath(server.SESSION_SET, args[0]); err == nil {
-		output(opts.post(url, os.Stdin))
+func (opts *DocConnectionArgs) query() []string {
+	query := make([]string, 0, 3)
+	if opts.WantsOrg {
+		query = append(query, "org=true")
 	}
-	opts.usage(true)
+	if opts.DataOnly {
+		query = append(query, "dataOnly=true")
+	}
+	if opts.WantsNoStrings {
+		query = append(query, "strings=false")
+	}
+	return query
+}
+
+func (cmd *SessionCreateCmd) Run(cli *CLI) error {
+	query := cmd.query()
+	if len(query) > 0 {
+		output(cli.get(server.SESSION_CREATE + cmd.Session + "/" + cmd.DocId + "?" + strings.Join(query, "&")))
+	} else {
+		output(cli.get(server.SESSION_CREATE, cmd.Session, cmd.DocId))
+	}
+	return nil
+}
+
+func (cmd *SessionListCmd) Run(cli *CLI) error {
+	output(cli.get(server.SESSION_LIST))
+	return nil
+}
+
+func (cmd *SessionDocCmd) Run(cli *CLI) error {
+	output(cli.get(server.SESSION_DOCUMENT))
+	return nil
+}
+
+func (cmd *SessionGetCmd) Run(cli *CLI) error {
+	output(cli.get(server.SESSION_GET, cmd.Name))
+	return nil
+}
+
+func (cmd *SessionSetCmd) Run(cli *CLI) error {
+	if url, err := url.JoinPath(server.SESSION_SET, cmd.Name); err == nil {
+		output(cli.post(url, os.Stdin))
+	} else {
+		cli.globals.ctx.PrintUsage(false)
+	}
+	return nil
 }
 
 func panicWith(format string, args ...any) {
 	panic(server.ErrorJSON(fmt.Errorf(format, args...)))
 }
 
-func (cmd *command) sessionConnect(opts *options, args []string) {
-	cmd.argCount(1, args)
-	url := server.SESSION_CONNECT + args[0]
+func (cmd *SessionConnectCmd) Run(cli *CLI) error {
+	url := server.SESSION_CONNECT + cmd.Session
 	q := ""
-	query := make([]string, 0, 3)
-	if opts.docId != "" {
-		query = append(query, "doc="+opts.docId)
+	query := cmd.query()
+	if cmd.DocId != "" {
+		query = append(query, "doc="+cmd.DocId)
 	}
-	if opts.wantsOrg {
-		query = append(query, "org=true")
-	}
-	if opts.dataOnly {
-		query = append(query, "dataOnly=true")
-	}
-	if opts.wantsNoStrings {
-		query = append(query, "strings=false")
-	}
-	if opts.force {
+	if cmd.Force {
 		query = append(query, "force=true")
 	}
 	if len(query) > 0 {
 		q = "?" + strings.Join(query, "&")
 	}
-	fmt.Fprintln(os.Stderr, "sending session connect:", url+q)
-	output(opts.postOrGet(url + q))
+	cli.verbose(1, "sending session connect: %s", url+q)
+	output(cli.postOrGet(url + q))
+	return nil
 }
 
-func (cmd *command) sessionEdit(opts *options, args []string) {
-	output(opts.post(server.SESSION_EDIT, os.Stdin))
+func (cmd *SessionEditCmd) Run(cli *CLI) error {
+	output(cli.post(server.SESSION_EDIT, os.Stdin))
+	return nil
 }
 
-func (cmd *command) sessionUpdate(opts *options, args []string) {
-	output(opts.get(server.SESSION_UPDATE))
+func (cmd *SessionRefreshCmd) Run(cli *CLI) error {
+	output(cli.post(server.SESSION_EDIT, strings.NewReader(`{
+		"selectionOffset":0,
+		"selectionLength":0,
+		"replacements": []
+	}`)))
+	return nil
 }
 
-func (cmd *command) parse(opts *options, args []string) {
-	output(opts.post(server.ORG_PARSE, os.Stdin))
+func (cmd *SessionUpdateCmd) Run(cli *CLI) error {
+	output(cli.get(server.SESSION_UPDATE))
+	return nil
 }
 
-func (cmd *command) get(opts *options, args []string) {
-	cmd.argCount(1, args)
-	output(opts.get(args[0]))
+func (cmd *ParseCmd) Run(cli *CLI) error {
+	output(cli.post(server.ORG_PARSE, os.Stdin))
+	return nil
+}
+
+func (cmd *GetCmd) get(cli *CLI) error {
+	output(cli.get(cmd.URL))
+	return nil
 }
 
 func main() {
-	sigs := make(chan os.Signal)
-	signal.Notify(sigs, os.Interrupt, os.Kill)
-	go func() {
-		<-sigs
-		fmt.Println("Dying from signal")
-		exitCode = 1
-		die()
-	}()
-	defer func() {
-		if err := recover(); err != nil {
-			fmt.Fprintln(os.Stderr, "DYING FROM PANIC:", err)
-			debug.PrintStack()
-			fmt.Println(server.ErrorJSON(err))
-			exitCode = 1
-		}
-		die()
-	}()
-	opts := newOptions()
-	if len(os.Args) == 1 || len(os.Args[1]) == 0 || os.Args[1][0] == '-' {
-		opts.usage(false)
-	}
-	cmd := opts.cmds[os.Args[1]]
-	if cmd == nil {
-		panicWith("%w: unrecognized command: %s", ErrBadCommand, os.Args[1])
-	}
-	cmd.call(opts, os.Args[2:])
+	cli := CLI{}
+	initGlobalOpts(&cli)
+	ctx := kong.Parse(&cli)
+	cli.verbose(1, "MAIN")
+	cli.globals.ctx = ctx
+	cli.check()
+	cli.defaults()
+	cli.verbose(1, "RUN")
+	ctx.Run(&cli)
 }
