@@ -14,7 +14,7 @@ const VIEW_RE =
 const LEISURE_LINK_RE = /^leisure:(.*)$/i
 const HREF_LINK_RE = /^http(s)?:.*$/i
 const BLOCK_RE = /^#\+begin_([^ \n]+) *([^\n]*)\n.*#\+end_.*$/is
-const KEYWORD_RE = /^#\+([^ \n]+): *([^ \n]*) *\n$/i
+const KEYWORD_RE = /^(#\+)([^ \n]+)(: *)([^ \n]*)( *\n)$/i
 const Prism = WINDOW.Prism as any
 const LEISURE_PATH = /^@?([-\w])((?:\.[\[\]\w])*)/
 
@@ -25,71 +25,208 @@ export const TEXT_FIELD_MATCHERS = [(node) => node instanceof HTMLInputElement]
 
 export const ORG_PARSE = VERSION + "/org/parse"
 
-interface Chunk {
-  type: string
-  id: string
-  text: string
-  next?: string
-  prev?: string
-  parent?: string
-  children?: string[]
-  raw?: any
-  serial?: number
+function classProps(cls: any) {
+  return Object.getOwnPropertyNames(cls.prototype)
 }
 
-interface Headline extends Chunk {
-  level: number
-  levelStr?: string
-  interStr?: string
-  contentStr?: string
-  hlClass?: string
-  hidden?: boolean
+if (!Symbol.metadata) {
+  (Symbol as any).metadata = Symbol("  __METADATA__  ")
 }
 
-interface Keyword extends Chunk {
+function key<T>(value: T, ctx) {
+  const {kind, metadata, name} = ctx
+  if (kind === 'field') {
+    if (!Object.getOwnPropertyDescriptor(metadata, "keys")) {
+      metadata.keys = [...(metadata.keys ?? [])]
+    }
+    metadata.keys.push(name)
+  }
+}
+
+function keys(cls: any) {
+  return cls[Symbol.metadata].keys ?? []
+}
+
+class Chunk {
+  @key type: string
+  @key id: string
+  @key text: string
+  @key next?: string
+  @key prev?: string
+  @key parent?: string
+  @key children?: string[]
+  @key raw?: any // the classified raw text -- when catenated it should be exactly the same as text
+  @key serial?: number
+  [key: string]: any // allow extra properties
+
+  constructor(type: string, id: string) {
+    this.type = type
+    this.id = id
+  }
+
+  mainPopulate(renderer: OrgRenderer, chunk: any, index = true) {
+    if (this.type && (this.type !== chunk.type || this.id !== chunk.id)) {
+      // type changed, can't update this in-place
+      console.log("TYPE OR ID CHANGED", this)
+      renderer.chunkFor(chunk, index)
+      return false
+    }
+    if (this.serial !== undefined && (this.serial === renderer.serial || this.serial === chunk.serial)) {
+      return true
+    }
+    for (const key of keys(this.constructor)) {
+      if (chunk[key] !== undefined) {
+        this[key] = chunk[key]
+      }
+    }
+    this.serial = renderer.serial
+    if (index) {
+      renderer.chunks[this.id] = this
+    }
+    this.raw = {}
+    this.populate(renderer)
+  }
+
+  populate(_renderer: OrgRenderer) {}
+}
+
+class Headline extends Chunk {
+  @key level: number
+  @key levelStr?: string
+  @key interStr?: string
+  @key contentStr?: string
+  @key hlClass?: string
+  @key hidden?: boolean
+
+  async populate(renderer: OrgRenderer) {
+    super.populate(renderer)
+    ; [, this.levelStr, this.interStr, this.contentStr] = this.text.match(HEADLINE_RE)
+    const raw = this.raw
+    ; [raw.level, raw.inter, raw.content] = [this.levelStr, this.interStr, this.contentStr]
+    this.hlClass = this.level < 5 ? `leisure-hl-${this.level}` : "leisure-hl-deep"
+  }
+}
+
+class Keyword extends Chunk {
   name: string
   value: string
+
+  populate(renderer: OrgRenderer) {
+    super.populate(renderer)
+    const raw = this.raw
+    ; [, raw.prec, this.name, raw.inter, this.value, raw.succ] = this.text.match(KEYWORD_RE)
+    raw.name = this.name
+    raw.value = this.value
+    //if (this.name.toLowerCase() == "templates") {
+    //  return this.addTemplates(await parseOrg(value))
+    //}
+  }
 }
 
-interface Block extends Chunk {
-  label: number
-  labelEnd: number
-  content: number
-  end: number
-  contentStr?: string
-  options: string[]
-  blockType?: string
+class Block extends Chunk {
+  @key label: number
+  @key labelEnd: number
+  @key content: number
+  @key end: number
+  @key contentStr?: string
+  @key options: string[]
+  @key blockType?: string
+
+  populate(renderer: OrgRenderer) {
+    super.populate(renderer)
+    const text = this.text
+    const raw = this.raw
+    raw.start = text.slice(0, this.content),
+    raw.content = text.slice(this.content, this.end),
+    raw.end = text.slice(this.end),
+    this.contentStr = raw.content
+    if (this.type == "block") {
+      this.blockType = text.slice(this.label, this.labelEnd)
+    }
+  }
 }
 
-interface Source extends Block {
-  valueType?: string
-  value?: any
-  nameStart?: number
-  nameEnd?: number
-  srcStart?: number
-  name?: string
-  language?: string
-  inter1Str?: string
-  beginStr?: string
-  contentStr?: string
-  endStr?: string
-  inter2Str?: string
-  resultStr?: string
-  tags?: string[] // NOTE: fill in with prepare()
+class Source extends Block {
+  @key valueType?: string
+  @key value?: any
+  @key nameStart?: number
+  @key nameEnd?: number
+  @key srcStart?: number
+  @key name?: string
+  @key language?: string
+  @key inter1Str?: string
+  @key beginStr?: string
+  @key endStr?: string
+  @key inter2Str?: string
+  @key resultStr?: string
+  @key tags?: string[] // NOTE: fill in with prepare()
+
+  populate(renderer: OrgRenderer) {
+    super.populate(renderer)
+    const match = this.text.match(SOURCE_RE) as any
+    const raw = this.raw
+    let language: string
+    ; [ ,
+        raw.preName,
+        raw.name,
+        raw.inter1,
+        raw.begin,
+        language,
+        raw.content,
+        raw.end,
+        raw.inter2,
+        raw.result,
+        ] = match
+    this.name = (raw.name ?? "").trim()
+    this.language = (language ?? "").toLowerCase()
+    this.contentStr = raw.content
+    this.resultStr = raw.result
+    if (this.name) {
+      renderer.namedChunks[this.name] = this.id
+    }
+    const ref = refFor(this)
+    if (ref) {
+      renderer.refs[ref] = this.id
+    }
+    renderer.tag(this)
+    this.valueType = optionValue(this, ":type")[0] || this.value?.LEISURE_TYPE
+    renderer.scanView(this)
+  }
 }
 
-interface Drawer extends Block {
-  properties?: { [prop: string]: string }
-  name?: string
+class Drawer extends Block {
+  @key properties?: { [prop: string]: string }
+  @key name?: string
+
+  populate(renderer: OrgRenderer) {
+    super.populate(renderer)
+    const match = this.text.match(DRAWER_RE) as any
+    const raw = this.raw
+    ; [, raw.begin, raw.beginPad, raw.content, raw.end, raw.endPad] = match
+    this.contentStr = raw.content
+    this.name = raw.begin.slice(1, raw.begin.length - 1)
+    if (this.name.toLowerCase() === "properties") {
+      this.properties = {}
+      for (const [prop, value] of Object.entries(this.properties)) {
+        this.properties[prop.toLowerCase()] = String(value)
+      }
+      if (this.properties.hidden?.toLowerCase()?.trim() === "true") {
+        const parent = renderer.chunks[this.parent] as Headline
+        if (parent) {
+          parent.hidden = true
+        }
+      }
+    }
+  }
 }
 
-interface Table extends Chunk {
-  cells: string[][] // 2D array of cell strings
-  values: any[][] // 2D array of JSON-compatible values
+class Table extends Chunk {
+  @key cells: string[][] // 2D array of cell strings
+  @key values: any[][] // 2D array of JSON-compatible values
   // these are relevant only if there is a preceding name element
-  nameStart: number
-  nameEnd: number // this is 0 if there is no name
-  tblStart: number // this is 0 if there is no name
+  @key nameStart?: number
+  @key nameEnd?: number // this is 0 if there is no name
+  @key tblStart: number // this is 0 if there is no name
 }
 
 const templateNames = new Set([
@@ -338,9 +475,22 @@ interface Binding {
   update(): any
 }
 
+const CHUNK_TYPES = {
+  headline: Headline,
+  text: Chunk,
+  source: Source,
+  block: Block,
+  results: Chunk,
+  html: Chunk,
+  drawer: Drawer,
+  keyword: Keyword,
+  table: Table,
+}
+
 export class OrgRenderer {
   leisure: Leisure
   dom: any
+  globals: { [id: string]: any }
   chunks: { [id: string]: Chunk }
   serial: number
   orphans: HTMLDivElement
@@ -351,7 +501,7 @@ export class OrgRenderer {
   bound: { [name: string]: Binding[] }
   nextId: 1
 
-  constructor(leisure: Leisure, dom: HTMLElement, templateChunks: Chunk[]) {
+  constructor(leisure: Leisure, dom: HTMLElement, templateChunks: any[]) {
     currentRenderer = this
     this.leisure = leisure
     this.dom = dom
@@ -365,7 +515,8 @@ export class OrgRenderer {
     this.orphans.style.display = "none"
     document.body.append(this.orphans)
     // populate chunks first -- this can load more templates
-    this.addTemplates(templateChunks).then(() => console.log(this))
+    this.addTemplates(templateChunks)
+    console.log(this)
     WINDOW.Leisure = this
   }
 
@@ -395,33 +546,35 @@ export class OrgRenderer {
     }
   }
 
-  async addTemplates(templateChunks: Chunk[]) {
+  addTemplates(templateChunks: any[]) {
     const scripts = [] as HTMLScriptElement[]
 
     console.log("template:", templateChunks)
-    await Promise.all(
-      templateChunks.map((chunk) => this.populateChunk(chunk, false))
-    )
-    for (const chunk of templateChunks) {
+    const chunks: Chunk[] = templateChunks.map(c=> this.populateChunk(c, false))
+    for (const chunk of chunks) {
       runChunk(chunk, scripts)
     }
     runScripts(scripts)
   }
 
+  chunkFor(chunk: any, index = true) {
+    return new (CHUNK_TYPES[chunk.type] ?? Chunk)(chunk.type, chunk.id)
+  }
+
   connect(result: any) {
-    console.log("connect:", result)
-    for (const chunk of result.chunks) {
+    const chunks = result.chunks.map(c => this.chunkFor(c))
+    console.log("connect:", chunks)
+    for (const chunk of chunks) {
       this.chunks[chunk.id] = chunk
     }
     for (const chunk of result.chunks) {
-      this.populateChunk(chunk)
+      this.populateChunk(chunk, false)
     }
-    for (const chunk of result.chunks) {
+    for (const chunk of chunks) {
       this.displayChunk(chunk)
       this.showViews()
     }
     this.clearOrphans()
-    //console.log('displayed', this)
   }
 
   clearOrphans() {
@@ -446,7 +599,7 @@ export class OrgRenderer {
     }
     for (const list of [changes.added ?? [], changes.changed ?? []]) {
       for (const chunk of list) {
-        this.chunks[chunk.id] = chunk
+        this.chunks[chunk.id] = this.chunkFor(chunk)
         all.push(chunk)
         changed.add(chunk.id)
       }
@@ -474,7 +627,9 @@ export class OrgRenderer {
     for (const chunk of all) {
       this.populateChunk(chunk)
     }
-    for (const chunk of all) {
+    for (const input_chunk of all) {
+      const chunk = this.chunks[input_chunk.id]
+
       this.displayChunk(chunk)
       if (isSource(chunk) && chunk.name) {
         this.showViewNamed(this.dom, chunk.name, chunk)
@@ -672,17 +827,17 @@ export class OrgRenderer {
 
   // simple paths -- a src block name with an optional path which can contain indexing
   // returns [ base-src-name, getter-function, setter-function ]
-  parseBinding(b: string) {
+  parseBinding(binding: string) {
     try {
-      const [, b, rest] = b.match(LEISURE_PATH)
+      const [, b, rest] = binding.match(LEISURE_PATH)
       const base = b[0] === "@" ? b.slice(1) : b
       const baseGet =
         b[0] === "@"
           ? () => this.globals[base]
           : () =>
-              structuredClone(
-                (this.chunks[this.namedChunks[base]] as Source).value
-              )
+            structuredClone(
+              (this.chunks[this.namedChunks[base]] as Source).value
+            )
       const baseSet =
         b[0] === "@"
           ? (v) => (this.globals[base] = v)
@@ -701,10 +856,10 @@ export class OrgRenderer {
             setter = !index
               ? baseSet
               : b[0] === "@"
-              ? (value: any) => {
+                ? (value: any) => {
                   this.globals[base] = value
                 }
-              : (value: any) => {
+                : (value: any) => {
                   const obj = structuredClone(
                     (this.chunks[this.namedChunks[base]] as Source).value
                   )
@@ -719,7 +874,7 @@ export class OrgRenderer {
             trunk = !index
               ? (value: any) => (prev(this.leisure.get(base))[part] = value)
               : (value: any) =>
-                  (prev(this.leisure.get(base))[part][index] = value)
+                (prev(this.leisure.get(base))[part][index] = value)
           }
         }
         if (!trunk) {
@@ -741,7 +896,7 @@ export class OrgRenderer {
       ///////////////////////
       return [base, getter, setter]
     } catch (err) {
-      console.log(`Error parsing Leisure binding '${b}':`, err)
+      console.log(`Error parsing Leisure binding '${binding}':`, err)
       return null
     }
   }
@@ -798,99 +953,11 @@ export class OrgRenderer {
   }
 
   // add properties to chunk to support templates
-  async populateChunk(chunk: Chunk, index = true) {
-    if (chunk.serial === this.serial) {
-      return
-    }
+  populateChunk(raw: any, index = true) {
+    let chunk = this.chunks[raw.id] || this.chunkFor(raw)
+    chunk.mainPopulate(this, raw, index)
     chunk.serial = this.serial
-    if (index) {
-      this.chunks[chunk.id] = chunk
-    }
-    if (isBlock(chunk)) {
-      const text = chunk.text
-      chunk.raw = {
-        start: text.slice(0, chunk.content),
-        content: text.slice(chunk.content, chunk.end),
-        end: text.slice(chunk.end),
-      }
-      chunk.contentStr = chunk.raw.content
-      chunk.blockType = chunk.text.slice(chunk.label, chunk.labelEnd)
-    }
-    if (isHeadline(chunk)) {
-      const [, level, inter, content] = chunk.text.match(HEADLINE_RE)
-      chunk.raw = { level, inter, content }
-      chunk.contentStr = content
-      chunk.hlClass =
-        chunk.level < 5 ? `leisure-hl-${chunk.level}` : "leisure-hl-deep"
-    } else if (isKeyword(chunk)) {
-      [, chunk.name, chunk.value] = chunk.text.match(KEYWORD_RE)
-    } else if (isSource(chunk)) {
-      const match = chunk.text.match(SOURCE_RE) as any
-      const [
-        ,
-        preName,
-        name,
-        inter1,
-        begin,
-        language,
-        content,
-        end,
-        inter2,
-        result,
-      ] = match
-      chunk.raw = {
-        preName,
-        name,
-        inter1,
-        begin,
-        language,
-        content,
-        end,
-        inter2,
-        result,
-      }
-      chunk.name = (name ?? "").trim()
-      chunk.language = (language ?? "").toLowerCase()
-      chunk.contentStr = content
-      chunk.resultStr = result
-      if (chunk.name) {
-        this.namedChunks[chunk.name] = chunk.id
-      }
-      const ref = refFor(chunk)
-      if (ref) {
-        this.refs[ref] = chunk.id
-      }
-      this.tag(chunk)
-      chunk.valueType =
-        optionValue(chunk, ":type")[0] || chunk.value?.LEISURE_TYPE
-      this.scanView(chunk)
-    } else if (isDrawer(chunk)) {
-      const match = chunk.text.match(DRAWER_RE) as any
-      const [, begin, beginPad, content, end, endPad] = match
-      chunk.raw = { begin, beginPad, content, end, endPad }
-      chunk.contentStr = content
-      chunk.name = begin.slice(1, begin.length - 1)
-      if (chunk.name.toLowerCase() === "properties") {
-        const props = {}
-        for (const [prop, value] of Object.entries(chunk.properties)) {
-          props[prop.toLowerCase()] = value
-        }
-        chunk.properties = props
-        if (chunk.properties.hidden?.toLowerCase()?.trim() === "true") {
-          const parent = this.chunks[chunk.parent] as Headline
-          if (parent) {
-            parent.hidden = true
-          }
-        }
-      }
-    } else if (isKeyword(chunk)) {
-      const match = chunk.text.match(KEYWORD_RE) as any
-      const [, keyword, body] = match
-      console.log("keyword", keyword, `body '${body}'`)
-      if (keyword.toLowerCase() == "templates") {
-        return this.addTemplates(await parseOrg(body))
-      }
-    }
+    return chunk
   }
 
   tag(chunk: Source) {

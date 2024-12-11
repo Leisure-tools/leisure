@@ -373,6 +373,15 @@ func outputBasic(resp *http.Response, parseJson bool) {
 	fmt.Print(obj)
 }
 
+func (cmd *StopCmd) Run(cli *CLI) error {
+	cli.globals.UnixSocket = cmd.UnixSocket
+	cli.globals.Port = cmd.Port
+	cli.globals.Host = cmd.Host
+	cli.globals.Verbose = cmd.Verbose
+	cli.get(server.STOP)
+	return nil
+}
+
 func (cmd *DocCreateCmd) Run(cli *CLI) error {
 	if cmd.DocId == "" {
 		key := make([]byte, 16)

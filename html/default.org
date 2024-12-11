@@ -2,7 +2,7 @@
 
 #+begin_src html :view Leisure.headline
 <div class='{{hlClass}}' data-hidden={{hidden}}>{{{renderText contentStr}}}</div>
-<div class='leisure-headline-content' x-leisure-headline-content='true'></div>
+<div class='leisure-headline-content' data-leisure-headline-content='true'></div>
 #+end_src
 
 #+begin_src html :view Leisure.text
@@ -18,7 +18,7 @@
 </div>
 <script>
   //debugger
-  window.Prism?.highlightAllUnder(document.currentScript.closest('[x-leisure-orgid]'))
+  window.Prism?.highlightAllUnder(document.currentScript.closest('[data-leisure-orgid]'))
 </script>
 #+end_src
 
@@ -59,6 +59,7 @@
 #+end_src
 
 #+begin_src html :view Leisure.table
+{{#if name}}<span class='leisure-name'>{{name}}:{{/if}}
 <table class='leisure-table'>
   {{#each values}}
   <tr>
@@ -127,11 +128,11 @@ pre[class*=language-] {
     white-space: pre-line;
 }
 
-body:not(.show-hidden) [x-leisure-type=headline] > [data-hidden=true] {
+body:not(.show-hidden) [data-leisure-type=headline] > [data-hidden=true] {
     display: none;
 }
 
-body:not(.show-hidden) [x-leisure-type=headline] > [data-hidden=true] + * {
+body:not(.show-hidden) [data-leisure-type=headline] > [data-hidden=true] + * {
     display: none;
 }
 
