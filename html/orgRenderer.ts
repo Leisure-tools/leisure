@@ -3,8 +3,6 @@ import { VERSION, Leisure } from "./leisure.js"
 const WINDOW = window as any
 const structuredClone = WINDOW.structuredClone
 const HEADLINE_RE = /^(\*+)( +)(.*)\n$/
-const HTML_RE =
-  /^(#\+name:[^\n]*\n)?(.*)(#\+begin_html[^\n]*\n)(.*\n)(#\+end_html[^\n]*\n)/is
 const SOURCE_RE =
   /^(?:(#\+name: *)([^\n]*\n))?(.*)(#\+begin_src *([^ \n]*)[^\n]*\n)(.*)(#\+end_src[^\n]*\n)((.*)(#\+result:.*\n))?$/is
 const DRAWER_RE = /^([^\n]*)( *\n)(.*\n)?(:end:)( *\n)$/
@@ -13,7 +11,6 @@ const VIEW_RE =
   /#\+begin_src +html (?:[^\n]+ )?:view +([^\n \/]+)(?:\/([^\n ]+))?(?: [^\n]+)?\n/is
 const LEISURE_LINK_RE = /^leisure:(.*)$/i
 const HREF_LINK_RE = /^http(s)?:.*$/i
-const BLOCK_RE = /^#\+begin_([^ \n]+) *([^\n]*)\n.*#\+end_.*$/is
 const KEYWORD_RE = /^(#\+)([^ \n]+)(: *)([^ \n]*)( *\n)$/i
 const Prism = WINDOW.Prism as any
 const LEISURE_PATH = /^@?([-\w])((?:\.[\[\]\w])*)/
