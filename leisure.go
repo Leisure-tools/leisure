@@ -433,13 +433,13 @@ func (cmd *SessionUnlockCmd) Run(cli *CLI) error {
 
 func (opts *DocConnectionArgs) query() []string {
 	query := make([]string, 0, 3)
-	if opts.WantsOrg {
+	if opts.Org {
 		query = append(query, "org=true")
 	}
-	if opts.DataOnly {
+	if opts.Data {
 		query = append(query, "dataOnly=true")
 	}
-	if opts.WantsNoStrings {
+	if opts.NoStrings {
 		query = append(query, "strings=false")
 	}
 	return query

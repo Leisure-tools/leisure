@@ -205,9 +205,11 @@
                            (let ((next (car rest)))
                              (setq rest (cdr rest))
                              (funcall transform next)))))
-          (cond ((memq first '(socket :socket :unixsocket unixsocket "-unixsocket"))
+          (cond ((or (memq first '(socket :socket :unixsocket unixsocket))
+                     (and (stringp first) (s-starts-with? "--unix-socket" first)))
                  (setq socket (shift 'leisure-as-file)))
-                ((memq first '(:cookies cookies "-cookies"))
+                ((or (memq first '(:cookies cookies))
+                     (and (stringp first) (s-starts-with? "--cookies" first)))
                  (setq cookies 'identity))
                 ((memq first '(:input input))
                  (setq input 'leisure-as-file))
@@ -236,8 +238,8 @@
          nil)
       ,@(list program input output display)
       ,@(dl/resolve final-args)
-      ,@(if socket (list "-unixsocket" socket) ())
-      ,@(if cookies (list "-cookies" cookies) ()))
+      ,@(if socket (list (format "--unix-socket=%s" socket)) ())
+      ,@(if cookies (list (format "--cookies=%s" cookies)) ()))
     ))
 
 (defun leisure-choose-doc ()
@@ -265,14 +267,13 @@
                    (buffer-string)                      ; input
                    'leisure-parse                       ; filter
                    "session" "connect"
-                   "-unixsocket" leisure-socket
-                   "-cookies" cookies
-                   "-lock"
-                   "-force"
-                   "-doc" (or docid (leisure-full-path))     ; alias
+                   (format "--unix-socket=%s" leisure-socket)
+                   (format "--cookies=%s" cookies)
+                   "--lock"
+                   "--force"
                    (format "%s-%d" leisure-peer (emacs-pid)) ; peer name
+                   (or docid (leisure-full-path))            ; alias
                    )))
-    ;(if connect
     (leisure-diag 1 "Connected, result: %s" connect)
     (if (eql 0 (car connect))
         (progn
@@ -286,10 +287,10 @@
 (defun leisure-disconnect ()
   (if leisure-info
       (progn
-        (leisure-call-program nil "session" "unlock" "-cookies" (leisure-cookies))
+        (leisure-call-program nil "session" "unlock" (format "--cookies=%s" (leisure-cookies)))
         (setq leisure-info nil)
-        (kill-buffer "leisure-update")
-        (kill-buffer "leisure-update-errors"))))
+        (unwind-protect (kill-buffer "leisure-update"))
+        (unwind-protect (kill-buffer "leisure-update-errors")))))
 
 (defun leisure-should-monitor ()
   "Return whether any change should be monitored right now."
@@ -365,13 +366,13 @@
 
 (defun leisure-parse (status buf)
   (with-current-buffer buf
-    (message "received\n%s" (buffer-string))
+    (message "received\n---\n%s\n---" (buffer-string))
     (let ((result (json-parse-buffer :null-object nil)))
       (if (eql status 0)
           ;; on success, return the result
           result
         ;;otherwise turn off leisure mode and return nil
-        (leisure-diag 0 "Error parsing output: %2" (gethash "message" (cdr result)))
+        (leisure-diag 0 "Error parsing output: %S" (gethash "message" (cdr result)))
         (leisure-mode false)
         nil))))
 
@@ -441,7 +442,7 @@
       (let ((buf (current-buffer)))
         (message "CALLING %s" (string-join (list leisure-program
                                                  "session" "update"
-                                                 "-cookies" (leisure-cookies))
+                                                 (format "--cookies=%s" (leisure-cookies)))
                                            " "))
         (setf (leisure-data-update-buffer leisure-info) "leisure-update")
         (setf (leisure-data-error-buffer leisure-info) "leisure-update-errors")
@@ -450,7 +451,7 @@
          :buffer (leisure-data-update-buffer leisure-info)
          :command (list leisure-program
                         "session" "update"
-                        "-cookies" (leisure-cookies))
+                        (format "--cookies=%s" (leisure-cookies)))
          :noquery t
          :connection-type 'pty
          :sentinel (lambda (proc status) (leisure-update-result buf proc status))
@@ -494,7 +495,8 @@
                         (json-encode input)
                         'leisure-parse
                         "session" "edit"
-                        "-cookies" (leisure-cookies))))
+                        "-v"
+                        (format "--cookies=%s" (leisure-cookies)))))
           (message "RESULT %s" result)
           (if (eql 0 (car result))
               (progn
