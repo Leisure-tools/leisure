@@ -402,11 +402,26 @@ func (cmd *DocListCmd) Run(cli *CLI) error {
 }
 
 func (cmd *DocGetCmd) Run(cli *CLI) error {
-	if cmd.Hash != "" {
-		outputBasic(cli.get(server.DOC_GET, cmd.DocId, "?", "hash", cmd.Hash), true)
-		return nil
+	args := make([]string, 0, 14)
+	args = append(args, server.DOC_GET, cmd.DocId)
+	initial := len(args)
+	addQuery := func(key, value string) {
+		prefix := "&"
+		if len(args) == initial {
+			prefix = "?"
+		}
+		args = append(args, prefix, key, "=", value)
 	}
-	outputBasic(cli.get(server.DOC_GET, cmd.DocId), true)
+	if cmd.Hash != "" {
+		addQuery("hash", cmd.Hash)
+	}
+	if cmd.Dump {
+		addQuery("dump", "true")
+	}
+	if cmd.Org {
+		addQuery("org", "true")
+	}
+	outputBasic(cli.get(strings.Join(args, "")), true)
 	return nil
 }
 
@@ -445,6 +460,7 @@ func (opts *DocConnectionArgs) query() []string {
 	return query
 }
 
+// TODO support input for a POST instead of a GET
 func (cmd *SessionCreateCmd) Run(cli *CLI) error {
 	query := cmd.query()
 	if len(query) > 0 {
@@ -471,10 +487,15 @@ func (cmd *SessionGetCmd) Run(cli *CLI) error {
 }
 
 func (cmd *SessionSetCmd) Run(cli *CLI) error {
-	if url, err := url.JoinPath(server.SESSION_SET, cmd.Name); err == nil {
-		output(cli.post(url, os.Stdin))
+	if cmd.Name != "" {
+		if url, err := url.JoinPath(server.SESSION_SET, cmd.Name); err == nil {
+			output(cli.post(url, os.Stdin))
+		} else {
+			fmt.Fprintf(os.Stderr, "Error: %v", err)
+			cli.globals.ctx.PrintUsage(false)
+		}
 	} else {
-		cli.globals.ctx.PrintUsage(false)
+		output(cli.post(server.SESSION_SET, os.Stdin))
 	}
 	return nil
 }
@@ -516,7 +537,8 @@ func (cmd *SessionRefreshCmd) Run(cli *CLI) error {
 }
 
 func (cmd *SessionUpdateCmd) Run(cli *CLI) error {
-	output(cli.get(server.SESSION_UPDATE))
+	fmt.Fprintln(os.Stderr, "TIMEOUT: ", cmd.Timeout)
+	output(cli.get(server.SESSION_UPDATE + fmt.Sprintf("?timeout=%d", cmd.Timeout)))
 	return nil
 }
 

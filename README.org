@@ -16,6 +16,9 @@ This is an evolving view of the entire Leisure project
 | emacs support                        | 👷      |
 | browser rendering                    | 👷      |
 |--------------------------------------+---------|
+| Julia support                        | 👷      |
+| Control                              | 👷      |
+|--------------------------------------+---------|
 | VS Code support                      | ⌛      |
 | peer to peer                         | ⌛      |
 | - encryption (rotating keys)         | ⌛      |
