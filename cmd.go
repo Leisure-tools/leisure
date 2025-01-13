@@ -77,6 +77,7 @@ type CLI struct {
 		Refresh SessionRefreshCmd `cmd help:"Send a null edit to a sesison"`
 		Update  SessionUpdateCmd  `cmd help:"Check if a session has updates"`
 		Unlock  SessionUnlockCmd  `cmd help:"Unlock a session"`
+		Tag     SessionTagCmd     `cmd help:"Get tagged data from a session's document"`
 	} `cmd help:"Session commands"`
 }
 
@@ -149,6 +150,10 @@ type SessionUpdateCmd struct {
 }
 
 type SessionUnlockCmd struct{}
+
+type SessionTagCmd struct {
+	Name string `arg help:"Tag for data blocks"`
+}
 
 type ParseCmd struct {
 	*GlobalOpts

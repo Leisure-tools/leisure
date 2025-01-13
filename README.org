@@ -14,10 +14,12 @@ This is an evolving view of the entire Leisure project
 | leisure command                      | ✅      |
 |--------------------------------------+---------|
 | emacs support                        | 👷      |
+|--------------------------------------+---------|
 | browser rendering                    | 👷      |
 |--------------------------------------+---------|
 | Julia support                        | 👷      |
 | Control                              | 👷      |
+| remote execution                     | 👷      |
 |--------------------------------------+---------|
 | VS Code support                      | ⌛      |
 | peer to peer                         | ⌛      |
@@ -33,9 +35,7 @@ This is an evolving view of the entire Leisure project
 | -   markers for region               | ⌛      |
 | marker support                       | ⌛      |
 | - blocks have a list of markers      | ⌛      |
-| julia support                        | ⌛      |
 | sql persistence                      | ⌛      |
-| remote execution                     | ⌛      |
 | file observer / writer               | ⌛      |
 
 * Use cases

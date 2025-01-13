@@ -545,6 +545,11 @@ func (cmd *SessionUpdateCmd) Run(cli *CLI) error {
 	return nil
 }
 
+func (cmd *SessionTagCmd) Run(cli *CLI) error {
+	output(cli.get(server.SESSION_TAG, cmd.Name))
+	return nil
+}
+
 func (cmd *ParseCmd) Run(cli *CLI) error {
 	output(cli.post(server.ORG_PARSE, os.Stdin))
 	return nil
