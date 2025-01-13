@@ -125,7 +125,7 @@
     (make-leisure-data
      :monitoring t
      :socket leisure-socket
-     :cookies (format "%s.%s.%s.cookies" filename leisure-peer (emacs-pid))
+     :cookies (format "%s.cookies" filename)
      :session (format "%s-%d-%s" leisure-peer (emacs-pid) filename)
      :document-alias filename
      :com-buffer-name (format "*leisure-connection:%s*" filename)
@@ -247,18 +247,27 @@
             (cons (format "%s: %s" (elt pair 0) (elt pair 1)) pair))))
     (cdr (assoc (completing-read "doc: " items) items))))
 
-(defun leisure-connect ()
-  "Connect to leisure"
-  (interactive)
-  (let* ((doc-id (leisure-choose-doc))
-         (file (make-temp-file "leisure-"))
-         (buf (find-file file)))
-    (with-current-buffer buf
-      (leisure-start t (elt doc-id 0) (elt doc-id 1)))))
+(defun leisure-connect (arg)
+  "Connect to leisure; always use the same filename for the a document unless called with a prefix arg, then it will append the emacs pid"
+  (interactive "P")
+  (let ((success nil))
+    (ignore-errors
+      (let* ((doc-id (leisure-choose-doc))
+             (file (format "/tmp/emacs-leisure/leisure-%s%s"
+                           (elt doc-id 0)
+                           (if arg (format "-%s" (emacs-pid)) "")))
+             (dir (mkdir (file-name-directory file) t))
+             (buf (find-file file)))
+        (with-current-buffer buf
+          (leisure-start t (elt doc-id 0) (elt doc-id 1))
+          (setq success t))))
+    (if (not success)
+        (message "Could not connect to Leisure"))))
 
 (defun leisure-start (&optional connecting docid alias)
   (message "Starting leisure...")
   (make-local-variable 'leisure-info)
+  (add-hook 'kill-buffer-hook 'leisure-disconnect)
   (setq leisure-info (leisure-compute-info))
   (when alias (setf (leisure-data-document-alias leisure-info) alias))
   (leisure-diag 1 "Connecting...")
@@ -286,11 +295,13 @@
 
 (defun leisure-disconnect ()
   (if leisure-info
-      (progn
+      (ignore-errors
         (leisure-call-program nil "session" "unlock" (format "--cookies=%s" (leisure-cookies)))
+        (kill-buffer (leisure-data-update-buffer leisure-info))
+        (kill-buffer (leisure-data-error-buffer leisure-info))
+        (kill-buffer (leisure-data-com-buffer-name leisure-info))
         (setq leisure-info nil)
-        (unwind-protect (kill-buffer "leisure-update"))
-        (unwind-protect (kill-buffer "leisure-update-errors")))))
+        (leisure-cancel-update))))
 
 (defun leisure-should-monitor ()
   "Return whether any change should be monitored right now."
@@ -438,7 +449,7 @@
     result))
 
 (defun leisure-update ()
-  (if leisure-info
+  (if (and leisure-info (buffer-live-p (current-buffer)))
       (let ((buf (current-buffer)))
         (message "CALLING %s" (string-join (list leisure-program
                                                  "session" "update"
@@ -447,7 +458,7 @@
         (setf (leisure-data-update-buffer leisure-info) "leisure-update")
         (setf (leisure-data-error-buffer leisure-info) "leisure-update-errors")
         (make-process
-         :name "leisure-update"
+         :name (leisure-data-update-buffer leisure-info)
          :buffer (leisure-data-update-buffer leisure-info)
          :command (list leisure-program
                         "session" "update"
@@ -471,9 +482,10 @@
 
 ;; cancel pending update
 (defun leisure-cancel-update ()
-  (let ((status (process-status "leisure-update")))
+  (let* ((updates (leisure-data-update-buffer leisure-info))
+         (status (process-status updates)))
     (cond ((memq status '(run open))
-           (delete-process "leisure-update")))))
+           (delete-process updates)))))
 
 (defun leisure-send-edit ()
   (if leisure-info

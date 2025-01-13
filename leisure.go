@@ -421,6 +421,9 @@ func (cmd *DocGetCmd) Run(cli *CLI) error {
 	if cmd.Org {
 		addQuery("org", "true")
 	}
+	if cmd.Data {
+		addQuery("data", "true")
+	}
 	outputBasic(cli.get(strings.Join(args, "")), true)
 	return nil
 }
@@ -537,7 +540,7 @@ func (cmd *SessionRefreshCmd) Run(cli *CLI) error {
 }
 
 func (cmd *SessionUpdateCmd) Run(cli *CLI) error {
-	fmt.Fprintln(os.Stderr, "TIMEOUT: ", cmd.Timeout)
+	//fmt.Fprintln(os.Stderr, "TIMEOUT: ", cmd.Timeout)
 	output(cli.get(server.SESSION_UPDATE + fmt.Sprintf("?timeout=%d", cmd.Timeout)))
 	return nil
 }

@@ -107,6 +107,7 @@ type DocGetCmd struct {
 	Hash  string `help:"ID is a document hash"`
 	Dump  bool   `help:"Request a dump of an org document instead of the document itself"`
 	Org   bool   `help:"Request document in org format"`
+	Data  bool   `help:"Request document data"`
 }
 
 type SessionListCmd struct{}
