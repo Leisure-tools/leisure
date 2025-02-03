@@ -1,5 +1,7 @@
 import { Leisure, Edit, Replacement } from './leisure.js'
 import { OrgRenderer, parseOrg } from './orgRenderer.js'
+import { initCodemirror } from './codemirror-support.js'
+import { initTextEditor } from './text-support.js'
 
 const DEFAULT_TEMPLATES = "/default.org"
 
@@ -58,6 +60,8 @@ async function ready() {
   const useOrg = (docUrl.searchParams.get("org") ?? "").toLowerCase() == "true"
   const leisure = new Leisure(docUrl.href, "browser", docUrl.searchParams.get("doc"))
   if (useOrg) {
+    initCodemirror()
+    initTextEditor()
     const renderer = new OrgRenderer(leisure, document.body, await parseOrg(docUrl.searchParams.get("templates") || DEFAULT_TEMPLATES))
     await leisure.connect(true, (repl)=> renderer.connect(repl))
     leisure.updateLoop(updates, (repl)=>renderer.update(repl), displayError)

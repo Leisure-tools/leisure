@@ -944,8 +944,10 @@ export class OrgRenderer {
     const view = this.views[`${type}/${namespace}`]
 
     if (chunk) {
+      console.log('RENDER CHUNK:', chunk)
       return view && view(value, { data: { chunk } })
     }
+    console.log('RENDER CHUNK:', value)
     return view && view(value)
   }
 
@@ -1001,6 +1003,7 @@ export class OrgRenderer {
   renderChunk(chunk: Chunk) {
     const template = this.views[`Leisure.${chunk.type}/default`]
     if (template) {
+      console.log('RENDER CHUNK', chunk)
       return template(chunk)
     }
     return renderText(chunk.text)
@@ -1014,6 +1017,11 @@ export class OrgRenderer {
 console.log("adding renderText handler")
 // render org text
 Handlebars.registerHelper("renderText", renderText)
+
+Handlebars.registerHelper("options", (chunk, opts)=> {
+  console.log('OPTIONS HELPER, CHUNK:', chunk, 'OPTS: ', opts)
+  return chunk.text.slice(chunk.label, chunk.labelEnd)
+})
 
 // view, render a view or an object
 Handlebars.registerHelper("view", (item: any, namespace: string) => {

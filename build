@@ -1,0 +1,12 @@
+#!/bin/sh
+dir=$(dirname "$(realpath "$0")")
+cd "$dir/html"
+make
+cd ..
+shopt -s nullglob
+rm -f html/*~ html/.#* html/#*
+mv html/node_modules .
+go build
+status=$?
+mv node_modules html
+exit $status

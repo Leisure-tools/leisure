@@ -1,5 +1,22 @@
 {
+  "type": "module",
   "dependencies": {
-    "handlebars": "^4.7.7"
+    "@codemirror/lang-javascript": "^6.2.2",
+    "@codemirror/lang-json": "^6.0.1",
+    "@codemirror/lang-yaml": "^6.1.2",
+    "@editorjs/editorjs": "^2.30.7",
+    "@plutojl/lang-julia": "^0.12.1",
+    "@replit/codemirror-interact": "^6.3.1",
+    "@rollup/plugin-node-resolve": "^16.0.0",
+    "@shoelace-style/shoelace": "^2.19.1",
+    "codemirror": "^6.0.1",
+    "codex-notifier": "^1.1.2",
+    "codex-tooltip": "^1.0.5",
+    "handlebars": "^4.7.7",
+    "rollup": "^4.32.0"
+  },
+  "devDependencies": {
+    "@rollup/plugin-typescript": "^12.1.2",
+    "tslib": "^2.8.1"
   }
 }

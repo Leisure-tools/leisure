@@ -1,6 +1,8 @@
 {
   "compilerOptions": {
-    "target": "ES2021",
+    "target": "es2024",
+    "module": "esnext",
+    "moduleResolution": "node",
     "lib": ["esnext", "dom"],
     "sourceMap": true,
     "plugins": [
@@ -9,5 +11,5 @@
       }
     ]
   },
-  "files": ["main.ts", "leisure.ts", "orgRenderer.ts"]
+  "files": ["main.ts", "leisure.ts", "orgRenderer.ts", "codemirror-support.ts"]
 }

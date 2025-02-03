@@ -6,10 +6,23 @@
 #+end_src
 
 #+begin_src html :view Leisure.text
+<text-editor document='{{text}}'></text-editor>
+#+end_src
+
+#+begin_src html :view Leisure.text-plain
 <span>{{{renderText text}}}</span>
 #+end_src
 
 #+begin_src html :view Leisure.source
+<div class='leisure-block-holder'>
+  <div class='leisure-source'>
+    <div class='leisure-block-label'>{{#if name}}<span class='leisure-name'><code-mirror plain document='{{name}}' class='inline-block' bind='name'></code-mirror>: </span>{{/if}}<b><i><code-mirror plain document='{{options this}}' class='inline-block' bind='label'></code-mirror></i></b></div>
+    <code-mirror language='{{language}}' document='{{contentStr}}'/>
+  </div>
+</div>
+#+end_src
+
+#+begin_src html :view Leisure.source-prism
 <div class='leisure-block-holder'>
   <div class='leisure-source'>
     <div class='leisure-block-label'>{{#if name}}<span class='leisure-name'>{{name}}: </span>{{/if}}<b><i>{{language}}</i></b></div>
@@ -99,6 +112,10 @@ pre[class*=language-] {
 }
 
 .leisure-block-holder {
+    display: inline-block;
+}
+
+.inline-block {
     display: inline-block;
 }
 
@@ -208,6 +225,10 @@ body:not(.show-hidden) [data-leisure-type=headline] > [data-hidden=true] + * {
 }
 
 .leisure-headline-content {
+    margin-left: 1ex;
+}
+
+[data-leisure-orgid] .ce-block__content {
     margin-left: 1ex;
 }
 #+end_src
