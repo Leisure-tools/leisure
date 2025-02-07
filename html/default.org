@@ -16,8 +16,8 @@
 #+begin_src html :view Leisure.source
 <div class='leisure-block-holder'>
   <div class='leisure-source'>
-    <div class='leisure-block-label'>{{#if name}}<span class='leisure-name'><code-mirror plain document='{{name}}' class='inline-block' bind='name'></code-mirror>: </span>{{/if}}<b><i><code-mirror plain document='{{options this}}' class='inline-block' bind='label'></code-mirror></i></b></div>
-    <code-mirror language='{{language}}' document='{{contentStr}}'/>
+    <div class='leisure-block-label'>{{#if name}}<span class='leisure-name'><code-mirror plain bind='name' class='inline-block'></code-mirror>: </span>{{/if}}<b><i><code-mirror plain class='inline-block' bind='label'></code-mirror></i></b></div>
+    <code-mirror bind='content'/>
   </div>
 </div>
 #+end_src

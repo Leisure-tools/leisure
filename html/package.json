@@ -1,5 +1,9 @@
 {
   "type": "module",
+  "prettier": {
+    "semi": false,
+    "singleQuote": true
+  },
   "dependencies": {
     "@codemirror/lang-javascript": "^6.2.2",
     "@codemirror/lang-json": "^6.0.1",

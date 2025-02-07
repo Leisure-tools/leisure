@@ -44,7 +44,7 @@ function keys(cls: any) {
   return cls[Symbol.metadata].keys ?? []
 }
 
-class Chunk {
+export class Chunk {
   @key type: string
   @key id: string
   @key text: string
@@ -87,7 +87,7 @@ class Chunk {
   populate(_renderer: OrgRenderer) {}
 }
 
-class Headline extends Chunk {
+export class Headline extends Chunk {
   @key level: number
   @key levelStr?: string
   @key interStr?: string
@@ -104,7 +104,7 @@ class Headline extends Chunk {
   }
 }
 
-class Keyword extends Chunk {
+export class Keyword extends Chunk {
   name: string
   value: string
 
@@ -120,7 +120,7 @@ class Keyword extends Chunk {
   }
 }
 
-class Block extends Chunk {
+export class Block extends Chunk {
   @key label: number
   @key labelEnd: number
   @key content: number
@@ -143,7 +143,7 @@ class Block extends Chunk {
   }
 }
 
-class Source extends Block {
+export class Source extends Block {
   @key valueType?: string
   @key value?: any
   @key nameStart?: number
@@ -191,7 +191,7 @@ class Source extends Block {
   }
 }
 
-class Drawer extends Block {
+export class Drawer extends Block {
   @key properties?: { [prop: string]: string }
   @key name?: string
 
@@ -217,7 +217,7 @@ class Drawer extends Block {
   }
 }
 
-class Table extends Chunk {
+export class Table extends Chunk {
   @key cells: string[][] // 2D array of cell strings
   @key values: any[][] // 2D array of JSON-compatible values
   // these are relevant only if there is a preceding name element
@@ -497,6 +497,7 @@ export class OrgRenderer {
   taggedChunks: { [id: string]: Set<string> }
   bound: { [name: string]: Binding[] }
   nextId: 1
+  handlers: { [id: string]: (ch: Chunk)=> void }
 
   constructor(leisure: Leisure, dom: HTMLElement, templateChunks: any[]) {
     currentRenderer = this
@@ -510,6 +511,7 @@ export class OrgRenderer {
     this.taggedChunks = {}
     this.orphans = document.createElement("div")
     this.orphans.style.display = "none"
+    this.handlers = {}
     document.body.append(this.orphans)
     // populate chunks first -- this can load more templates
     this.addTemplates(templateChunks)
@@ -588,6 +590,7 @@ export class OrgRenderer {
   }
 
   update(changes: any) {
+    console.log('Updating with changes', changes)
     this.serial++
     const all = [] as Chunk[]
     const changed = new Set() as Set<string>
@@ -620,7 +623,9 @@ export class OrgRenderer {
         }
       }
     }
-    this.orderChunks(changes.order, all)
+    if (changes.order) {
+      this.orderChunks(changes.order, all)
+    }
     for (const chunk of all) {
       this.populateChunk(chunk)
     }
@@ -727,13 +732,16 @@ export class OrgRenderer {
         dom.getAttribute("data-leisure-type") === "headline" &&
         dom.querySelector("[data-leisure-headline-content]")
       children && children.remove()
-      dom.innerHTML = this.renderChunk(chunk)
-      this.bind(dom)
-      if (children) {
-        while (children.firstChild) {
-          dom
-            .querySelector("[data-leisure-headline-content]")
-            .append(children.firstChild)
+      const ch = this.renderChunk(chunk)
+      if (ch !== undefined) {
+        dom.innerHTML = this.renderChunk(chunk)
+        this.bind(dom)
+        if (children) {
+          while (children.firstChild) {
+            dom
+              .querySelector("[data-leisure-headline-content]")
+              .append(children.firstChild)
+          }
         }
       }
     }
@@ -772,6 +780,10 @@ export class OrgRenderer {
     for (const child of el.children as any as HTMLElement[]) {
       this.bind(child)
     }
+  }
+
+  chunk(id: string) {
+    return this.chunks[id]
   }
 
   get(name: string) {
@@ -1001,6 +1013,10 @@ export class OrgRenderer {
   }
 
   renderChunk(chunk: Chunk) {
+    if (this.handlers[chunk?.id]) {
+      this.handlers[chunk.id](chunk)
+      return
+    }
     const template = this.views[`Leisure.${chunk.type}/default`]
     if (template) {
       console.log('RENDER CHUNK', chunk)

@@ -1,4 +1,4 @@
-import { Leisure, Edit, Replacement } from './leisure.js'
+import { Leisure, Edit, TextReplacement } from './leisure.js'
 import { OrgRenderer, parseOrg } from './orgRenderer.js'
 import { initCodemirror } from './codemirror-support.js'
 import { initTextEditor } from './text-support.js'
@@ -6,12 +6,12 @@ import { initTextEditor } from './text-support.js'
 const DEFAULT_TEMPLATES = "/default.org"
 
 async function replace(json: Edit) {
-    return replacements(json.replacements)
+    return replacements(json.replacements as TextReplacement[])
 }
 
 async function connect(result: any) {
   if (Array.isArray(result)) {
-    return replacements(result as Replacement[])
+    return replacements(result as TextReplacement[])
   } else if (typeof result === 'string') {
     return replacements([{offset: -1, length: -1, text: result}])
   } else {
@@ -19,7 +19,7 @@ async function connect(result: any) {
   }
 }
 
-async function replacements(repls: Replacement[]) {
+async function replacements(repls: TextReplacement[]) {
   const slices = []
   let prev = document.body.textContent
   
