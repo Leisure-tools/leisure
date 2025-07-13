@@ -81,13 +81,16 @@
   :type 'integer
   :group 'leisure)
 
+(defvar-keymap leisure-mode-map
+  "C-<return>" 'leisure-inc-send)
+
 (define-minor-mode leisure-mode
-  "Used when connected to a browser (☢)."
+  "Used when connected to leisure (☢)."
   :lighter "☢"
-  ;;:init-value nil
-  ;;:keymap nil
+  :keymap leisure-mode-map
   :group 'leisure
-  (leisure-toggle-mode))
+  :interactive nil
+  )
 
 (cl-defstruct leisure-data
   "information about the leisure connection"
@@ -267,42 +270,45 @@
              (buf (find-file file)))
         (message "doc-id: %S" doc-id)
         (with-current-buffer buf
-          (if leisure-monitor (org-mode))
+          (when leisure-monitor
+            (org-mode)
+            (leisure-mode))
           (leisure-start t (elt doc-id 0) (elt doc-id 1))
           (setq success t))))
     (if (not success)
         (message "Could not connect to Leisure"))))
 
 (defun leisure-start (&optional connecting docid alias)
-  (message "Starting leisure...")
-  (make-local-variable 'leisure-info)
-  ;;(add-hook 'kill-buffer-hook 'leisure-disconnect)
-  (setq leisure-info (leisure-compute-info))
-  (when alias (setf (leisure-data-document-alias leisure-info) alias))
-  (leisure-diag 1 "Connecting...")
-  (let* ((cookies (leisure-data-cookies leisure-info))
-         (connect (leisure-call-program-filter
-                   (if leisure-monitor nil (buffer-string))                 ; input
-                   (if leisure-monitor 'leisure-no-parse 'leisure-parse)    ; filter
-                   "session" "connect"
-                   (format "--unix-socket=%s" leisure-socket)
-                   (format "--cookies=%s" cookies)
-                   "--lock"
-                   "--force"
-                   (if leisure-monitor
-                       (format "MONITOR-%s" docid)
-                     (format "%s-%d" leisure-peer (emacs-pid)))             ; session name
-                   (or docid (leisure-full-path))                           ; alias
-                   )))
-    (leisure-diag 1 "Connected, result: %s" connect)
-    (if (eql 0 (car connect))
-        (progn
-          (when connecting
-            (insert (cdr connect))
-            (set-buffer-modified-p nil))
-          (leisure-add-change-hooks))
-      (setq leisure-mode t)))
-  (leisure-update))
+  (when (or (null (boundp 'leisure-info)) (null leisure-info))
+    (message "Starting leisure...")
+    (make-local-variable 'leisure-info)
+    ;;(add-hook 'kill-buffer-hook 'leisure-disconnect)
+    (setq leisure-info (leisure-compute-info))
+    (when alias (setf (leisure-data-document-alias leisure-info) alias))
+    (leisure-diag 1 "Connecting...")
+    (let* ((cookies (leisure-data-cookies leisure-info))
+           (connect (leisure-call-program-filter
+                     (if leisure-monitor nil (buffer-string))                 ; input
+                     (if leisure-monitor 'leisure-no-parse 'leisure-parse)    ; filter
+                     "session" "connect"
+                     (format "--unix-socket=%s" leisure-socket)
+                     (format "--cookies=%s" cookies)
+                     "--lock"
+                     "--force"
+                     (if leisure-monitor
+                         (format "MONITOR-%s" docid)
+                       (format "%s-%d" leisure-peer (emacs-pid)))             ; session name
+                     (or docid (leisure-full-path))                           ; alias
+                     )))
+      (leisure-diag 1 "Connected, result: %s" connect)
+      (if (eql 0 (car connect))
+          (progn
+            (when connecting
+              (insert (cdr connect))
+              (set-buffer-modified-p nil))
+            (leisure-add-change-hooks))
+        (setq leisure-mode t)))
+    (leisure-update)))
 
 (defun leisure-disconnect ()
   (if leisure-info
