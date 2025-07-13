@@ -24,6 +24,7 @@ func initGlobalOpts(cli *CLI) {
 	cli.Get.GlobalOpts = opts
 	cli.Doc.GlobalOpts = opts
 	cli.Session.GlobalOpts = opts
+	cli.Peer.Monitor = "NO MONITOR"
 }
 
 func (cli *CLI) defaults() {
@@ -82,11 +83,14 @@ type CLI struct {
 }
 
 type PeerCmd struct {
-	UnixSocket string `short:u help:"Path to UNIX socket -- will be created and must not exist beforehand" type:path`
-	Verbose    int    `short:v help:Verbose type:counter`
-	Port       int    `short:l name:listen help:"TCP Port to listen on"`
-	ofs        *Overlay
-	Html       string `help:"DIRECTORY to serve files from" type:path`
+	UnixSocket  string `short:u help:"Path to UNIX socket -- will be created and must not exist beforehand" type:path`
+	Verbose     int    `short:v help:Verbose type:counter`
+	Port        int    `short:l name:listen help:"TCP Port to listen on"`
+	Monitor     string `type:string short:m name:monitor help:"connect to REDIS [USER[:PASSWORD]@][HOST:][PORT][/DB] and monitor every document"`
+	MonitorConf string `type:string short:c name:conf help:"REDIS config file"`
+	ofs         *Overlay
+	Html        string `help:"DIRECTORY to serve files from" type:path`
+	Exclusive   bool   `short:e help:"Only one editor is expected, plus monitoring input -- no history"`
 }
 
 type StopCmd struct {

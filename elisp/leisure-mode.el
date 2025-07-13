@@ -68,6 +68,11 @@
   :type 'number
   :group 'leisure)
 
+(defcustom leisure-monitor nil
+  "Connect with monitor session"
+  :type 'boolean
+  :group 'leisure)
+
 (defcustom leisure-verbosity 0
   "-1: messages
 0: error messages only
@@ -145,7 +150,7 @@
 
 (defun leisure-list-docs ()
   "get the current list of doc ids and aliases"
-  (json-parse-string(leisure-call 'doc 'list :output-string)))
+  (json-parse-string (leisure-call 'doc 'list :output-string)))
 
 (defun leisure-output-pos (&rest args)
   (if (integerp (car args)) 5 3))
@@ -162,6 +167,7 @@
            (if (integerp (car args))
                'call-process-region
              'call-process)))
+      (leisure-diag 1 "leisure-call %s" args)
       (if output-string
           (with-output-to-string
             (let* ((output-pos (leisure-output-pos args))
@@ -251,14 +257,17 @@
   "Connect to leisure; always use the same filename for the a document unless called with a prefix arg, then it will append the emacs pid"
   (interactive "P")
   (let ((success nil))
-    (ignore-errors
+    ;;(ignore-errors
+    (with-demoted-errors "Error connecting to Leisure: %S"
       (let* ((doc-id (leisure-choose-doc))
              (file (format "/tmp/emacs-leisure/leisure-%s%s"
                            (elt doc-id 0)
                            (if arg (format "-%s" (emacs-pid)) "")))
              (dir (mkdir (file-name-directory file) t))
              (buf (find-file file)))
+        (message "doc-id: %S" doc-id)
         (with-current-buffer buf
+          (if leisure-monitor (org-mode))
           (leisure-start t (elt doc-id 0) (elt doc-id 1))
           (setq success t))))
     (if (not success)
@@ -267,21 +276,23 @@
 (defun leisure-start (&optional connecting docid alias)
   (message "Starting leisure...")
   (make-local-variable 'leisure-info)
-  (add-hook 'kill-buffer-hook 'leisure-disconnect)
+  ;;(add-hook 'kill-buffer-hook 'leisure-disconnect)
   (setq leisure-info (leisure-compute-info))
   (when alias (setf (leisure-data-document-alias leisure-info) alias))
   (leisure-diag 1 "Connecting...")
   (let* ((cookies (leisure-data-cookies leisure-info))
          (connect (leisure-call-program-filter
-                   (buffer-string)                      ; input
-                   'leisure-parse                       ; filter
+                   (if leisure-monitor nil (buffer-string))                 ; input
+                   (if leisure-monitor 'leisure-no-parse 'leisure-parse)    ; filter
                    "session" "connect"
                    (format "--unix-socket=%s" leisure-socket)
                    (format "--cookies=%s" cookies)
                    "--lock"
                    "--force"
-                   (format "%s-%d" leisure-peer (emacs-pid)) ; peer name
-                   (or docid (leisure-full-path))            ; alias
+                   (if leisure-monitor
+                       (format "MONITOR-%s" docid)
+                     (format "%s-%d" leisure-peer (emacs-pid)))             ; session name
+                   (or docid (leisure-full-path))                           ; alias
                    )))
     (leisure-diag 1 "Connected, result: %s" connect)
     (if (eql 0 (car connect))
@@ -366,14 +377,17 @@
         (add-hook 'after-revert-hook 'leisure-after-revert nil t))))
 
 (defun leisure-diag (level &rest args)
-  (if (<= leisure-verbosity level)
+  (if (<= level leisure-verbosity)
       (apply 'message args)))
 
 (defun leisure-call-program (input &rest args)
   (apply 'leisure-call-program-filter input 'leisure-no-parse args))
 
 (defun leisure-no-parse (status buf)
-  (and (eql 0 status) buf))
+  (and (eql 0 status)
+       (with-current-buffer buf
+         (message "received\n---\n%s\n---" (buffer-string))
+         (buffer-string))))
 
 (defun leisure-parse (status buf)
   (with-current-buffer buf
@@ -401,8 +415,12 @@
             (let* ((a (dl/resolve args))
                    (prog (car a))
                    (call-args (cddddr a)))
-              (message "CALLING %s %s" prog (string-join call-args " ")))
-            (setq args (dl/append (dl input nil) args))))
+              (message "leisure-call-program-filter WITH INPUT %s %s" prog (string-join call-args " ")))
+            (setq args (dl/append (dl input nil) args)))
+        (let* ((a (dl/resolve args))
+               (prog (car a))
+               (call-args (cddddr a)))
+          (message "leisure-call-program-filter WITH NO INPUT %s %s" prog (string-join call-args " "))))
       (setq args (dl/resolve args))
       (setq status (apply call args))
       (goto-char 0)
@@ -451,7 +469,7 @@
 (defun leisure-update ()
   (if (and leisure-info (buffer-live-p (current-buffer)))
       (let ((buf (current-buffer)))
-        (message "CALLING %s" (string-join (list leisure-program
+        (message "leisure-update %s" (string-join (list leisure-program
                                                  "session" "update"
                                                  (format "--cookies=%s" (leisure-cookies)))
                                            " "))
@@ -499,6 +517,10 @@
         (leisure-clear-timer 'flush-timer)
         (leisure-cancel-update)
         (message "selection offset: %s len: %s" start len)
+        (message "edit: %S" (leisure-map
+                       "selectionOffset" start
+                       "selectionLength" len
+                       "replacements" repls))
         (let* ((input (leisure-map
                        "selectionOffset" start
                        "selectionLength" len
@@ -522,26 +544,57 @@
   (if repls
       (let ((selOffset (gethash "selectionOffset" repls))
             (selLength (gethash "selectionLength" repls))
-            (replacements (gethash "replacements" repls)))
+            (replacements (gethash "replacements" repls))
+            (modified (buffer-modified-p)))
+        (leisure-diag 0 "repls %S" repls)
         (leisure-monitor-changes nil)
         (undo-boundary)
-        (seq-doseq (repl replacements)
-          (let ((offset (gethash "offset" repl))
-                (length (gethash "length" repl))
-                (text (gethash "text" repl)))
-            (cl-incf offset)
-            (delete-region offset (+ offset length))
-            (goto-char offset)
-            (insert text)))
-        (undo-boundary)
-        (if (> selOffset -1)
-            (progn
-              (cl-incf selOffset)
-              (goto-char selOffset)
-              (if (> selLength 0)
-                  (set-mark (+ selOffset selLength))
-                (deactivate-mark))))
-        (leisure-monitor-changes t))))
+        (let ((was-active mark-active))
+          (save-mark-and-excursion
+            (seq-doseq (repl replacements)
+              (let ((offset (gethash "offset" repl))
+                    (length (gethash "length" repl))
+                    (text (gethash "text" repl)))
+                (cl-incf offset)
+                (delete-region offset (+ offset length))
+                (goto-char offset)
+                (insert text)))
+            (set-buffer-modified-p modified)
+            (undo-boundary)
+            (leisure-monitor-changes t))
+          (if was-active
+            (setq mark-active t))))))
 
+(defun leisure-inc-send ()
+  (interactive)
+  (org-babel-when-in-src-block
+   (save-mark-and-excursion
+     (goto-char (org-babel-where-is-src-block-head))
+     (let* ((info (org-babel-get-src-block-info))
+            (opts (nth 2 info))
+            (send (assoc :send opts))
+            (start 0)
+            (end 0)
+            (num 0))
+       (message "SEND: %S" send)
+       (if (eq send nil)
+           (progn
+             (move-end-of-line nil)
+             (if (not (eq (char-before) ?\ )) (insert " "))
+             (insert ":send 0"))
+         (search-forward ":send")
+         (setq start (point))
+         (cond
+          ((numberp (cdr send))
+           (setq num (1+ (cdr send)))
+           (forward-word))
+          ((null (cdr send))
+           (setq num 0))
+          (t
+           (setq num (1+ (string-to-number (cdr send))))
+           (search-forward (cdr send))))
+         (delete-region start (point))
+         (insert " " (number-to-string num))
+       )))))
 (provide 'leisure-mode)
 ;;; leisure.el ends here

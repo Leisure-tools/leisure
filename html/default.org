@@ -54,9 +54,16 @@
 #+end_src
 
 #+begin_src html :view Leisure.drawer
+<sl-details class='leisure-drawer' summary='{{begin}}'>
+  <div class='leisure-block-content'>{{contentStr}}</div>
+  <div class='leisure-block-endlabel'>{{raw.end}}</div>
+</sl-details>
+#+end_src
+
+#+begin_src html :view Leisure.drawer.old
 <div class='leisure-block-holder'>
   <div class='leisure-block'>
-    <div class='leisure-block-label'>{{raw.begin}}</div>
+    <div class='leisure-block-label'>{{raw.start}}</div>
     <div class='leisure-block-content'>{{contentStr}}</div>
     <div class='leisure-block-endlabel'>{{raw.end}}</div>
   </div>
@@ -119,6 +126,7 @@ pre[class*=language-] {
     display: inline-block;
 }
 
+sl-details.leisure-drawer::part(summary),
 .leisure-block-label,
 .leisure-block-endlabel {
     background: lightgray;
@@ -128,9 +136,18 @@ pre[class*=language-] {
     padding-bottom: 0.4ex;
 }
 
+sl-details.leisure-drawer::part(summary),
 .leisure-block-label {
     border-top-left-radius: 4px;
     border-top-right-radius: 4px;
+}
+
+sl-details.leisure-drawer::part(content) {
+    padding-top: 0;
+}
+
+sl-details.leisure-drawer[open]::part(header) {
+    padding-bottom: 0;
 }
 
 .leisure-block-endlabel {

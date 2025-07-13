@@ -197,11 +197,10 @@ export class Drawer extends Block {
 
   populate(renderer: OrgRenderer) {
     super.populate(renderer)
-    const match = this.text.match(DRAWER_RE) as any
     const raw = this.raw
-    ; [, raw.begin, raw.beginPad, raw.content, raw.end, raw.endPad] = match
+    this.begin = raw.start.replace(/\n*$/, '')
     this.contentStr = raw.content
-    this.name = raw.begin.slice(1, raw.begin.length - 1)
+    this.name = raw.start.slice(1, raw.start.length - 1)
     if (this.name.toLowerCase() === "properties") {
       this.properties = {}
       for (const [prop, value] of Object.entries(this.properties)) {

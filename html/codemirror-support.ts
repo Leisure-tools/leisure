@@ -313,8 +313,10 @@ class CodeMirrorElement extends HTMLElement {
           this.chunkReplace(ch.nameStart || 0, ch.nameEnd || 0)
         break
       case 'label':
-        this.getContents = (ch) => ch.text.slice(ch.label, ch.labelEnd)
-        this.setContents = (ch) => this.chunkReplace(ch.label, ch.labelEnd)
+        //this.getContents = (ch) => ch.text.slice(ch.label, ch.labelEnd)
+        //this.setContents = (ch) => this.chunkReplace(ch.label, ch.labelEnd)
+        this.getContents = (ch) => ch.text.slice(ch.label, ch.content - 1)
+        this.setContents = (ch) => this.chunkReplace(ch.label, ch.content - 1)
         break
       case 'content':
         this.getContents = (ch) => chomp(ch.contentStr || '')
