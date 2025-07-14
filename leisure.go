@@ -666,7 +666,34 @@ func (l *leisure) initMonitor(mux *http.ServeMux, monStr string, tlsConf *tls.Co
 	l.AddListener(l)
 }
 
-func writeBlock(w io.Writer, m map[string]any) error {
+func writeProp(w io.Writer, prop string, v any) {
+	if prop == "value" {
+		return
+	}
+	if b, ok := v.(bool); ok && !b {
+		return
+	}
+	fmt.Fprint(w, " :", prop)
+	switch o := v.(type) {
+	case string:
+		if strings.TrimSpace(o) == "" {
+			return
+		}
+		fmt.Fprint(w, " ", v)
+	case []string:
+		for _, s := range o {
+			fmt.Fprint(w, " ", s)
+		}
+	case []any:
+		for _, s := range o {
+			fmt.Fprint(w, " ", s)
+		}
+	default:
+		fmt.Fprint(w, " ", v)
+	}
+}
+
+func (dm *docMonitor) writeBlock(w io.Writer, m map[string]any) error {
 	enc := yaml.NewEncoder(w)
 	fmt.Fprintln(w, "#+NAME: ", m["name"])
 	m2 := map[string]any{}
@@ -683,31 +710,22 @@ func writeBlock(w io.Writer, m map[string]any) error {
 		}
 	}
 	fmt.Fprint(w, "#+BEGIN_SRC ", lang)
-	for _, prop := range []string{"type", "origin", "root", "topics", "tags", "targets", "updateTopics", "updateTargets", "quiet", "topic"} {
-		if v, ok := m2[prop]; ok {
-			fmt.Fprint(w, " :", prop)
-			switch o := v.(type) {
-			case string:
-				fmt.Fprint(w, " ", v)
-			case []string:
-				for _, s := range o {
-					fmt.Fprint(w, " ", s)
+	if ch := dm.Chunks.GetChunkNamed(m["name"].(string)); !ch.IsEmpty() {
+		if bl, ok := ch.Chunk.(*org.Block); ok {
+			for _, opt := range bl.GetOptions() {
+				if !(len(opt) > 0 && opt[0] == ':') {
+					continue
 				}
-			case []any:
-				for _, s := range o {
-					fmt.Fprint(w, " ", s)
-				}
-			default:
-				return fmt.Errorf("Unsupported type for property %s: %v", prop, v)
+				delete(m2, opt[1:])
+				writeProp(w, opt[1:], strings.Join(bl.GetOption(opt[1:]), " "))
 			}
-			delete(m2, prop)
 		}
 	}
+	for prop, v := range m2 {
+		writeProp(w, prop, v)
+	}
 	fmt.Fprintln(w)
-	delete(m2, "value")
-	if len(m2) > 0 {
-		return fmt.Errorf("Unsupported properties for block: %v", m2)
-	} else if m["type"] == "code" {
+	if m["type"] == "code" {
 		v, _ := m["value"]
 		if s, ok := v.(string); !ok {
 			return fmt.Errorf("Bad value for code block: %v", m)
@@ -754,14 +772,6 @@ func (l *leisure) NewDocument(sv *server.LeisureService, id string) {
 		if err != nil {
 			panic(err)
 		}
-		if wantsOrg {
-			l.verbose(1, "NEW DOCUMENT: "+name+" MONITOR-"+id)
-			updates.ExclusiveDoc = updates.GetLatestDocument()
-			updates.Chunks = org.Parse(updates.ExclusiveDoc.String())
-			updates.ExternalFmt = writeBlock
-			updates.ExternalBlocks = rm.Changed
-		}
-		updates.Connect()
 		dm := &docMonitor{
 			leisure:        l,
 			RemoteMonitor:  rm,
@@ -769,6 +779,14 @@ func (l *leisure) NewDocument(sv *server.LeisureService, id string) {
 			lastUpdate:     0,
 			blockSerials:   make(map[org.OrgId]string),
 		}
+		if wantsOrg {
+			l.verbose(1, "NEW DOCUMENT: "+name+" MONITOR-"+id)
+			updates.ExclusiveDoc = updates.GetLatestDocument()
+			updates.Chunks = org.Parse(updates.ExclusiveDoc.String())
+			updates.ExternalFmt = dm.writeBlock
+			updates.ExternalBlocks = rm.Changed
+		}
+		updates.Connect()
 		rm.AddListener(dm)
 		updates.AddListener(dm)
 		l.Monitors[id] = dm
@@ -933,19 +951,17 @@ func (dm *docMonitor) dataBlockFor(chunk org.ChunkRef) map[string]any {
 		return nil
 	}
 	switch opts["type"] {
-	case "monitor":
-		copyOpts(opts, block, "type", "origin", "topics", "tags", "targets", "updateTopics", "root", "quiet")
-	case "data":
-		copyOpts(opts, block, "type", "topics", "tags", "targets", "code")
 	case "code":
-		copyOpts(opts, block, "type", "topics", "tags", "targets", "language", "return", "updateTopics")
 		block["value"] = sblock.Text[sblock.Content:sblock.End]
+		fallthrough
+	case "monitor", "data":
+		copyOpts(opts, block)
 	case "delete":
 		if dm.Blocks[name] == nil {
 			return nil
 		}
 		delete(dm.Blocks, name)
-		copyOpts(opts, block, "type", "topics", "targets", "value")
+		copyOpts(opts, block)
 	default:
 		dm.verbose(1, "Unknown block type, %v", opts["type"])
 		return nil
@@ -954,9 +970,11 @@ func (dm *docMonitor) dataBlockFor(chunk org.ChunkRef) map[string]any {
 	return block
 }
 
-func copyOpts(opts map[string]string, block map[string]any, props ...string) {
-	for _, prop := range props {
-		block[prop] = opts[prop]
+func copyOpts(opts map[string]string, block map[string]any) { //, props ...string) {
+	for k, v := range opts {
+		if _, has := block[k]; !has {
+			block[k] = v
+		}
 	}
 }
 
