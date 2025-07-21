@@ -793,7 +793,7 @@ func (l *leisure) NewDocument(sv *server.LeisureService, id string) {
 		//updates.History.AddListener(dm)
 		blocks := make([]map[string]any, 0, updates.Chunks.Chunks.Measure().Count)
 		count := 0
-		for ch := range updates.Chunks.Iter() {
+		for ch := range updates.Chunks.Seq() {
 			l.verbose(1, "BLOCK %#v", ch)
 			count++
 			if bl := dm.dataBlockFor(org.ChunkRef{Chunk: ch, OrgChunks: updates.Chunks}); bl != nil {
@@ -806,6 +806,7 @@ func (l *leisure) NewDocument(sv *server.LeisureService, id string) {
 		} else {
 			l.verbose(1, "NO BLOCKS FOUND OUT OF %d", count)
 		}
+		rm.ComputeTopics()
 	}
 }
 
@@ -841,35 +842,36 @@ func (dm *docMonitor) DataChanged(rm *monitor.RemoteMonitor) {
 	}
 }
 
-func (dm *docMonitor) DocumentChanged(s *server.LeisureSession, ch *org.ChunkChanges) {
-	dm.verbose(1, "@@@ RECEIVED DOCUMENT CHANGED @@@")
-	blockNames := make(u.Set[org.OrgId], len(ch.Added)+len(ch.Changed)+len(ch.Removed))
+func (dm *docMonitor) DocumentChanged(s *server.LeisureSession, ch *org.ChunkChanges, removed map[org.OrgId]org.Chunk) {
+	dm.verbose(1, "@@@ RECEIVED DOCUMENT CHANGED\n  add    %v\n  remove %v\n  change %v\n @@@", ch.Added, ch.Removed, ch.Changed)
+	blockIds := make(u.Set[org.OrgId], len(ch.Added)+len(ch.Changed)+len(ch.Removed))
 	blocks := make([]map[string]any, 0, len(ch.Added)+len(ch.Changed)+len(ch.Removed))
-	for _, name := range ch.Removed {
-		if blk, exists := dm.Blocks[string(name)]; exists {
-			blockNames.Add(name)
-			blocks = append(blocks, map[string]any{
-				"type":   "delete",
-				"name":   name,
-				"topics": blk["topics"],
-				"value":  name,
-			})
-		}
+	for _, id := range ch.Removed {
+		name := org.Name(removed[id])
+		blk := dm.Blocks[name]
+		blockIds.Add(id)
+		blocks = append(blocks, map[string]any{
+			"type":   "delete",
+			"name":   name,
+			"topics": blk["topics"],
+			"value":  blk["name"],
+		})
 	}
-	for name := range u.JoinIters(u.SetIterable(ch.Added), u.SetIterable(ch.Changed)) {
-		if blockNames.Has(name) {
+	for id := range u.Flatten(ch.Added, ch.Changed) {
+		if blockIds.Has(id) {
 			continue
 		}
-		chunk := s.ChunkRef(name)
+		chunk := s.ChunkRef(id)
+		dm.verbose(1, "Check block %s: %#v", id, chunk.Chunk)
 		if src, isSrc := chunk.Chunk.(*org.SourceBlock); isSrc {
 			if sends := src.GetOption("send"); sends != nil {
 				send := strings.Join(sends, " ")
-				old, has := dm.blockSerials[name]
+				old, has := dm.blockSerials[id]
 				if !has || old != send {
 					dm.verbose(1, "sending change, old serial: %v, new serial: %v", old, send)
-					blockNames.Add(name)
-					blocks = append(blocks, dm.dataBlockFor(s.ChunkRef(name)))
-					dm.blockSerials[name] = send
+					blockIds.Add(id)
+					blocks = append(blocks, dm.dataBlockFor(s.ChunkRef(id)))
+					dm.blockSerials[id] = send
 				} else {
 					dm.verbose(1, "ignoring change, old serial: %v, new serial: %v\n  opts: %v\n  send: %v\n  block: %#v", old, send, src.GetOptions(), src.GetOption("send"), src)
 				}
@@ -913,7 +915,7 @@ func (dm *docMonitor) updateSessionFromChanges(changes map[string]any) {
 					patch = append(patch, map[string]any{
 						"type":  "delete",
 						"name":  name,
-						"topic": dm.DefaultTopic,
+						"topic": dm.DefaultStream,
 					})
 				}
 			}
@@ -1115,10 +1117,8 @@ func (lc *lcontext) AddData(name string, val any) (map[string]any, error) {
 
 func printBlock(io io.Writer, language string, headers []string, body string) {
 	fmt.Fprintf(io, `#+begin_src %s`, language)
-	if headers != nil {
-		for _, str := range headers {
-			fmt.Fprint(io, " ", str)
-		}
+	for _, str := range headers {
+		fmt.Fprint(io, " ", str)
 	}
 	fmt.Fprintf(io, `\n%s\n#+end_src\n`, strings.TrimSpace(body))
 }

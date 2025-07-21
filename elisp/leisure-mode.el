@@ -332,6 +332,7 @@
   "Called on change (START, END, OLDLENGTH) to leisure buffers."
   (if (leisure-should-monitor)
       (let ((newText (buffer-substring-no-properties start end)))
+        (leisure-diag 1 "BUFFER CHANGED: start %S end %S oldLength %S" start end oldLength)
         (cl-decf start)
         (leisure-change start oldLength newText))
     ;(leisure-print "Not monitoring after change")
@@ -447,10 +448,10 @@
                    (dl (leisure-map "offset" offset "length" length "text" text))))
   ;; queue edit
   (if (not (leisure-data-flush-timer leisure-info))
-      (leisure-schedule-edit 'flush-timer leisure-max-wait))
-  (leisure-clear-timer 'activity-timer)
-  (leisure-schedule-edit 'activity-timer leisure-min-wait)
-  (message "QUEUED EDIT")
+      (leisure-schedule-edit 'flush-timer leisure-max-wait)
+    (leisure-clear-timer 'activity-timer)
+    (leisure-schedule-edit 'activity-timer leisure-min-wait)
+    (message "QUEUED EDIT"))
 )
 
 (defun leisure-schedule-edit (slot wait-time)
@@ -514,8 +515,8 @@
 (defun leisure-send-edit ()
   (if leisure-info
       (let ((repls (dl/resolve (leisure-data-changes leisure-info)))
-            (start (if (use-region-p) (region-beginning) (point)))
-            (len (if (use-region-p) (- (region-end) start) 0)))
+            (start (1- (if (use-region-p) (region-beginning) (point))))
+            (len (if (use-region-p) (- (1- (region-end)) start) 0)))
         (leisure-diag 0 "SEND EDIT!")
         (cl-incf start -1)
         (setf (leisure-data-changes leisure-info) (dl))

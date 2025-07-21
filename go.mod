@@ -1,6 +1,6 @@
 module github.com/leisure-tools/leisure
 
-go 1.24
+go 1.24.4
 
 require (
 	github.com/aki237/nscjar v0.0.0-20210417074043-bbb606196143
@@ -9,6 +9,7 @@ require (
 	github.com/leisure-tools/monitor v0.0.1
 	github.com/leisure-tools/org v0.0.6
 	github.com/leisure-tools/server v0.0.9
+	github.com/leisure-tools/utils v0.0.0-20250713190404-0ffac286bf4d
 	gopkg.in/yaml.v2 v2.4.0
 )
 
