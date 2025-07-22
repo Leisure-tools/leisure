@@ -393,12 +393,12 @@
 (defun leisure-no-parse (status buf)
   (and (eql 0 status)
        (with-current-buffer buf
-         (message "received\n---\n%s\n---" (buffer-string))
+         (leisure-diag 1 "received\n---\n%s\n---" (buffer-string))
          (buffer-string))))
 
 (defun leisure-parse (status buf)
   (with-current-buffer buf
-    (message "received\n---\n%s\n---" (buffer-string))
+    (leisure-diag 1 "received\n---\n%s\n---" (buffer-string))
     (let ((result (json-parse-buffer :null-object nil)))
       (if (eql status 0)
           ;; on success, return the result
@@ -422,12 +422,12 @@
             (let* ((a (dl/resolve args))
                    (prog (car a))
                    (call-args (cddddr a)))
-              (message "leisure-call-program-filter WITH INPUT %s %s" prog (string-join call-args " ")))
+              (leisure-diag 1 "leisure-call-program-filter WITH INPUT %s %s" prog (string-join call-args " ")))
             (setq args (dl/append (dl input nil) args)))
         (let* ((a (dl/resolve args))
                (prog (car a))
                (call-args (cddddr a)))
-          (message "leisure-call-program-filter WITH NO INPUT %s %s" prog (string-join call-args " "))))
+          (leisure-diag 1 "leisure-call-program-filter WITH NO INPUT %s %s" prog (string-join call-args " "))))
       (setq args (dl/resolve args))
       (setq status (apply call args))
       (goto-char 0)
@@ -451,7 +451,7 @@
       (leisure-schedule-edit 'flush-timer leisure-max-wait)
     (leisure-clear-timer 'activity-timer)
     (leisure-schedule-edit 'activity-timer leisure-min-wait)
-    (message "QUEUED EDIT"))
+    (leisure-diag 1 "QUEUED EDIT"))
 )
 
 (defun leisure-schedule-edit (slot wait-time)
@@ -476,7 +476,7 @@
 (defun leisure-update ()
   (if (and leisure-info (buffer-live-p (current-buffer)))
       (let ((buf (current-buffer)))
-        (message "leisure-update %s" (string-join (list leisure-program
+        (leisure-diag 1 "leisure-update %s" (string-join (list leisure-program
                                                  "session" "update"
                                                  (format "--cookies=%s" (leisure-cookies)))
                                            " "))
@@ -494,12 +494,12 @@
          :stderr (leisure-data-error-buffer leisure-info)))))
 
 (defun leisure-update-result (buf proc status)
-  (message "got update result: %s, buffer: %s" status (buffer-name))
+  (leisure-diag 1 "got update result: %s, buffer: %s" status (buffer-name))
   (if (string-equal status "finished\n")
       (with-current-buffer "leisure-update"
         (let ((result (downcase (string-trim (buffer-string)))))
           (erase-buffer)
-          (message "MALUBA! '%s'" result)
+          (leisure-diag 1 "MALUBA! '%s'" result)
           (if (string-equal "true" result)
               (with-current-buffer buf
                 (leisure-send-edit))
@@ -517,14 +517,14 @@
       (let ((repls (dl/resolve (leisure-data-changes leisure-info)))
             (start (1- (if (use-region-p) (region-beginning) (point))))
             (len (if (use-region-p) (- (1- (region-end)) start) 0)))
-        (leisure-diag 0 "SEND EDIT!")
+        (leisure-diag 1 "SEND EDIT!")
         (cl-incf start -1)
         (setf (leisure-data-changes leisure-info) (dl))
         (leisure-clear-timer 'activity-timer)
         (leisure-clear-timer 'flush-timer)
         (leisure-cancel-update)
-        (message "selection offset: %s len: %s" start len)
-        (message "edit: %S" (leisure-map
+        (leisure-diag 1 "selection offset: %s len: %s" start len)
+        (leisure-diag 1 "edit: %S" (leisure-map
                        "selectionOffset" start
                        "selectionLength" len
                        "replacements" repls))
@@ -538,7 +538,7 @@
                         "session" "edit"
                         "-v"
                         (format "--cookies=%s" (leisure-cookies)))))
-          (message "RESULT %s" result)
+          (leisure-diag 1 "RESULT %s" result)
           (if (eql 0 (car result))
               (progn
                 (setq X result)
@@ -553,7 +553,7 @@
             (selLength (gethash "selectionLength" repls))
             (replacements (gethash "replacements" repls))
             (modified (buffer-modified-p)))
-        (leisure-diag 0 "repls %S" repls)
+        (leisure-diag 1 "repls %S" repls)
         (leisure-monitor-changes nil)
         (undo-boundary)
         (let ((was-active mark-active))

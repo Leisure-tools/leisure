@@ -693,7 +693,7 @@ func writeProp(w io.Writer, prop string, v any) {
 	}
 }
 
-func (dm *docMonitor) writeBlock(w io.Writer, m map[string]any) error {
+func (dm *docMonitor) writeBlock(w io.Writer, m map[string]any, oldChunk org.ChunkRef) error {
 	enc := yaml.NewEncoder(w)
 	fmt.Fprintln(w, "#+NAME: ", m["name"])
 	m2 := map[string]any{}
@@ -710,14 +710,19 @@ func (dm *docMonitor) writeBlock(w io.Writer, m map[string]any) error {
 		}
 	}
 	fmt.Fprint(w, "#+BEGIN_SRC ", lang)
-	if ch := dm.Chunks.GetChunkNamed(m["name"].(string)); !ch.IsEmpty() {
-		if bl, ok := ch.Chunk.(*org.Block); ok {
+	if !oldChunk.IsEmpty() {
+		if bl, ok := oldChunk.Chunk.(org.Optionable); ok {
 			for _, opt := range bl.GetOptions() {
 				if !(len(opt) > 0 && opt[0] == ':') {
 					continue
 				}
-				delete(m2, opt[1:])
-				writeProp(w, opt[1:], strings.Join(bl.GetOption(opt[1:]), " "))
+				prop := opt[1:]
+				if v, exists := m2[prop]; !exists {
+					continue
+				} else {
+					delete(m2, prop)
+					writeProp(w, prop, v)
+				}
 			}
 		}
 	}
